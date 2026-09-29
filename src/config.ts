@@ -54,7 +54,7 @@ export interface SmartApproveConfig {
    *  or bare id. Default @tiny — the cheapest role, first in the fallback
    *  chain @tiny -> @smol -> @default. */
   model: string;
-  /** Optional local LANCET guard; disabled by default. */
+  /** Optional Smart Approve LANCET integration; disabled by default. */
   lancet?: LancetConfig;
 }
 

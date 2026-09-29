@@ -36,6 +36,20 @@ import { LancetCommandHandler } from "./lancet/commands.ts";
 import { createLancetScorer, releaseClassifier } from "./lancet/runtime.ts";
 import { modelDirectory } from "./lancet/model-store.ts";
 
+export const LANCET_COMMAND_NAME = "smart-approve-lancet";
+
+type LancetCommandHandlerFunction = (args: unknown, ctx: ExtensionCtx) => void | Promise<void>;
+
+export function registerLancetCommand(
+  pi: Pick<ExtensionAPI, "registerCommand">,
+  handler: LancetCommandHandlerFunction,
+): void {
+  pi.registerCommand(LANCET_COMMAND_NAME, {
+    description: "Inspect, install, enable, disable, or check Smart Approve LANCET",
+    handler,
+  });
+}
+
 /**
  * Smart Approve extension orchestrator.
  *
@@ -87,11 +101,8 @@ class SmartApprove {
 
   /** Register the shadowed tools, event hooks and slash command. */
   register(): void {
-    this.pi.registerCommand("lancet-guard", {
-      description: "Inspect, install, enable, disable, or check the local LANCET guard",
-      handler: async (args: unknown, ctx: ExtensionCtx) => {
-        await this.lancetCommands.handle(args, ctx);
-      },
+    registerLancetCommand(this.pi, async (args: unknown, ctx: ExtensionCtx) => {
+      await this.lancetCommands.handle(args, ctx);
     });
 
     this.pi.on("session_shutdown", async () => {
@@ -139,7 +150,7 @@ class SmartApprove {
     // Persistent mode chip in the TUI status bar.
     this.pi.on("session_start", async (_event, ctx: ExtensionCtx) => {
       ctx.ui.setStatus("smart-approve-mode", this.configStore.config.mode);
-      ctx.ui.setStatus("lancet-guard", this.configStore.config.lancet?.enabled ? "on" : "off");
+      ctx.ui.setStatus("smart-approve-lancet", this.configStore.config.lancet?.enabled ? "on" : "off");
     });
 
     // Runtime mode switching via slash command.

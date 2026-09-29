@@ -23,7 +23,7 @@ export function classifier(directory = modelDirectory()): Promise<LancetClassifi
   pending = (async () => {
     const state = modelState(directory);
     if (!state.installed) {
-      throw new Error(`the LANCET model is ${state.problem}; run /lancet-guard setup`);
+      throw new Error(`the LANCET model is ${state.problem}; run /smart-approve-lancet setup`);
     }
     return LancetClassifier.load(directory, loadRuntime());
   })();

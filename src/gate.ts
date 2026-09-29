@@ -276,7 +276,7 @@ export abstract class ToolGate {
 
       this.safeNotify(
         ctx,
-        `[lancet-guard] Review handoff: Smart Approve approval required (score=${score}${verdict.reason ? `, reason=${logText(verdict.reason)}` : ""}).`,
+        `[Smart Approve LANCET] Review handoff: Smart Approve approval required (score=${score}${verdict.reason ? `, reason=${logText(verdict.reason)}` : ""}).`,
         "info",
       );
     }

@@ -38,7 +38,7 @@ export function agentDirectory(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 export function modelDirectory(agentDir = agentDirectory()): string {
-  return path.join(agentDir, "lancet-guard", MODEL_ID);
+  return path.join(agentDir, "smart-approve-lancet", MODEL_ID);
 }
 
 /** Cheap presence check for status output; loading verifies every digest again. */

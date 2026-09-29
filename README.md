@@ -81,7 +81,7 @@ Auto-mode decision rules:
 - Auto-mode approvals are **not** written to the allow-list (AI verdicts can change; remembered approvals should stay human decisions).
 - Deny tier (regex-confident, blocks without any LLM verdict): force-push to `main`/`master`/`production`/`prod`/`release`/`trunk`, `rm -rf ~` / `$HOME`, block-device writes.
 
-## Local LANCET guard
+## Smart Approve LANCET
 
 Smart Approve can add a local, CPU-only LANCET Nano scorer for **Bash only**. It is disabled by default. Smart Approve keeps ownership of the policy chain:
 
@@ -98,23 +98,23 @@ The integration targets the local **SpecPi LANCET Nano v0.4.2 CPU INT8 model**, 
 ### Setup and lifecycle
 
 ```text
-/lancet-guard status                 # model and enabled-state status; no network
-/lancet-guard setup                  # the only network-using path
-/lancet-guard on                    # enable only after checksum verification
-/lancet-guard off                   # immediate escape hatch; disables Bash scoring
-/lancet-guard check <command>       # score for inspection; never executes it
+/smart-approve-lancet status       # model lifecycle and enabled-state status; no network
+/smart-approve-lancet setup        # the only network-using path
+/smart-approve-lancet on           # enable only after checksum verification
+/smart-approve-lancet off          # immediate escape hatch; disables Bash scoring
+/smart-approve-lancet check <command> # score for inspection; never executes it
 ```
 
 `setup` downloads the pinned HTTPS GitHub release archive to a private staging directory, verifies the archive and all three required model files, and atomically installs them under the existing agent directory:
 
 ```text
-~/.omp/agent/lancet-guard/lancet-nano-v0.4.2/
+~/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.2/
 ├── model-int8.onnx
 ├── tokenizer.json
 └── model.json
 ```
 
-The archive is not downloaded during package installation, session startup, `on`, `off`, or inference. Inference loads lazily on the first eligible Bash command, uses the CPU execution provider from the exact `onnxruntime-node` `1.30.0` dependency, and caches one classifier per model directory until `/lancet-guard off` or session end releases it. The release archive is about 100 MB and the ONNX file is about 111 MB; resident memory and score latency depend on the host CPU and ONNX Runtime.
+The archive is not downloaded during package installation, session startup, `on`, `off`, or inference. Inference loads lazily on the first eligible Bash command, uses the CPU execution provider from the exact `onnxruntime-node` `1.30.0` dependency, and caches one classifier per model directory until `/smart-approve-lancet off` or session end releases it. The release archive is about 100 MB and the ONNX file is about 111 MB; resident memory and score latency depend on the host CPU and ONNX Runtime.
 
 Add or persist the setting explicitly if needed:
 
@@ -126,7 +126,7 @@ Add or persist the setting explicitly if needed:
 }
 ```
 
-When enabled, model load or inference failure blocks the eligible Bash command and reports `/lancet-guard setup` remediation. `/lancet-guard off` persists immediately and restores the existing Smart Approve path.
+When enabled, model load or inference failure blocks the eligible Bash command and reports `/smart-approve-lancet setup` remediation. `/smart-approve-lancet off` persists immediately and restores the existing Smart Approve path.
 
 ## Architecture
 
@@ -275,7 +275,7 @@ tools:
 
 The custom "bash"/"eval" tools shadow the built-ins by name — no `bash.enabled` change is needed. Restart the host after installing or editing.
 
-Run `/lancet-guard setup` after installation if you want the optional local model. The package does not download model data automatically.
+Run `/smart-approve-lancet setup` after installation if you want the optional local model. The package does not download model data automatically.
 
 ## Configuration
 
@@ -352,7 +352,7 @@ Session allows are in-memory only, cleared on restart. You can edit or delete th
 | `pi.on("tool_call", handler)` | hub launch gating + write/edit protected-path interception |
 | `pi.on("session_start" / "session_shutdown")` | Status chips / RPC and LANCET classifier cleanup |
 | `pi.registerCommand("smart-approve", …)` | Runtime mode switching + status |
-| `pi.registerCommand("lancet-guard", …)` | LANCET status, setup, toggle, and non-executing check |
+| `pi.registerCommand("smart-approve-lancet", …)` | LANCET status, setup, toggle, and non-executing check |
 | `ctx.hasUI` | Detect headless/subagent context |
 | `ctx.sessionManager.getBranch()` / `getEntries()` | Gather session context for LLM review |
 | `ctx.ui.setStatus / notify / confirm / select` | Status, notifications, dialogs |
@@ -401,7 +401,7 @@ smart-approve/
 ~/.omp/agent/smart-approve.json                         — config (user-editable; mode toggles persist here)
 ~/.omp/agent/smart-approve-allow.json                   — permanent allow-list (auto-maintained)
 ~/.omp/logs/smart-approve.log                           — diagnostic log
-~/.omp/agent/lancet-guard/lancet-nano-v0.4.2/           — checksum-verified model files after setup
+~/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.2/           — checksum-verified model files after setup
 
 ```
 ## License
