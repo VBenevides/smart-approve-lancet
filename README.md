@@ -25,19 +25,27 @@ LLM calls bash / eval
        ├─ no behaviors → execute (zero interruption)
        └─ dangerous behavior → needs a verdict ↓
               │
-          headless (no UI)?
-              ├─ auto mode + autoInHeadless → AI decides
-              └─ otherwise → block
+              ├─ Bash + LANCET enabled → local CPU model
+              │      ├─ unavailable / invalid → block (fail closed)
+              │      ├─ risky → block
+              │      ├─ not_flagged → execute
+              │      └─ review → existing approval path ↓
               │
-          mode: "interactive"          mode: "auto"
-              │                            │
-          LLM analysis (@tiny first,     LLM analysis
-          @smol → @default fallback)     AutoDecisionPolicy
-              │                            ├─ recommend=deny / risk ≥ threshold → block
-          dialog:                          ├─ allow → execute + non-blocking notify
-          session allow / permanent        └─ LLM down → autoFallback:
-          allow / deny                         "regex" → deny-tier blocks, rest executes
-                                               "block" → block all reviewable ops
+              └─ eval or LANCET disabled → existing approval path ↓
+                                  │
+                              headless (no UI)?
+                                  ├─ auto mode + autoInHeadless → AI decides
+                                  └─ otherwise → block
+                                  │
+                              mode: "interactive"          mode: "auto"
+                                  │                            │
+                              LLM analysis (@tiny first,     LLM analysis
+                              @smol → @default fallback)     AutoDecisionPolicy
+                                  │                            ├─ recommend=deny / risk ≥ threshold → block
+                              dialog:                          ├─ allow → execute + non-blocking notify
+                              session allow / permanent        └─ LLM down → autoFallback:
+                              allow / deny                         "regex" → deny-tier blocks, rest executes
+                                                                   "block" → block all reviewable ops
 ```
 
 Hard-block always wins — no allow-list entry, AI verdict, or mode can override it.
@@ -73,6 +81,53 @@ Auto-mode decision rules:
 - Auto-mode approvals are **not** written to the allow-list (AI verdicts can change; remembered approvals should stay human decisions).
 - Deny tier (regex-confident, blocks without any LLM verdict): force-push to `main`/`master`/`production`/`prod`/`release`/`trunk`, `rm -rf ~` / `$HOME`, block-device writes.
 
+## Local LANCET guard
+
+Smart Approve can add a local, CPU-only LANCET Nano scorer for **Bash only**. It is disabled by default. Smart Approve keeps ownership of the policy chain:
+
+1. Smart Approve hard-block rules.
+2. Remembered allow-list.
+3. No-behavior fast pass.
+4. LANCET, only for behavior-positive Bash commands when enabled.
+5. Existing headless, LLM, auto-policy, or interactive-dialog handling for LANCET `review`.
+
+LANCET `risky` blocks before LLM or dialog. `not_flagged` delegates to the native Bash tool, but is **not a safety guarantee**. `review` continues through the existing Smart Approve approval path. A missing, damaged, invalid, or unavailable model fails closed instead of silently bypassing approval.
+
+The integration targets the local **SpecPi LANCET Nano v0.4.2 CPU INT8 model**, identifier `lancet-nano-v0.4.2`. It does not use v0.4.1, Jev, a Jev package, a hosted classifier, or a remote inference endpoint. The v0.4.2 release metadata pins `reviewThreshold` `0.5272825855548885` and `riskyThreshold` `0.9600226519174887`; the exact archive and file digests are in `src/lancet/model-manifest.ts`.
+
+### Setup and lifecycle
+
+```text
+/lancet-guard status                 # model and enabled-state status; no network
+/lancet-guard setup                  # the only network-using path
+/lancet-guard on                    # enable only after checksum verification
+/lancet-guard off                   # immediate escape hatch; disables Bash scoring
+/lancet-guard check <command>       # score for inspection; never executes it
+```
+
+`setup` downloads the pinned HTTPS GitHub release archive to a private staging directory, verifies the archive and all three required model files, and atomically installs them under the existing agent directory:
+
+```text
+~/.omp/agent/lancet-guard/lancet-nano-v0.4.2/
+├── model-int8.onnx
+├── tokenizer.json
+└── model.json
+```
+
+The archive is not downloaded during package installation, session startup, `on`, `off`, or inference. Inference loads lazily on the first eligible Bash command, uses the CPU execution provider from the exact `onnxruntime-node` `1.30.0` dependency, and caches one classifier per model directory until `/lancet-guard off` or session end releases it. The release archive is about 100 MB and the ONNX file is about 111 MB; resident memory and score latency depend on the host CPU and ONNX Runtime.
+
+Add or persist the setting explicitly if needed:
+
+```json
+{
+  "lancet": {
+    "enabled": false
+  }
+}
+```
+
+When enabled, model load or inference failure blocks the eligible Bash command and reports `/lancet-guard setup` remediation. `/lancet-guard off` persists immediately and restores the existing Smart Approve path.
+
 ## Architecture
 
 Object-oriented, dependency-inverted; every concern is a class:
@@ -83,14 +138,15 @@ SmartApprove (orchestrator)
  ├─ ModeManager          — runtime mode switching + status
  ├─ AllowList            — session + permanent decision memory
  ├─ AutoDecisionPolicy   — pure auto-mode verdict rules (thresholds, fallback)
+ ├─ LancetCommandHandler — model setup, status, toggle, and non-executing checks
  ├─ ToolGate (abstract, template method) — shared decision pipeline
- │    ├─ BashToolGate    — command analysis, cd-prefix cwd, native delegation
+ │    ├─ BashToolGate    — command analysis, LANCET integration, native delegation
  │    └─ EvalToolGate    — code analysis (subprocess intent), native delegation
  ├─ EvalCodeBehaviorAnalyzer — eval code patterns (comments/strings scrubbed)
  └─ HubLaunchGuard       — hub op:"start" regex rules
 ```
 
-`ToolGate` defines the invariant flow (hard-block → allow-list → no-behavior → headless → verdict → remember → delegate); each concrete gate implements three hooks — `analyze()` / `buildKey()` / `delegate()` — plus its schema and subject extraction. Adding a new covered tool means adding one subclass, not touching the pipeline. Collaborators are injected as narrow interfaces (`AllowListLike`, `ModelInvokerLike`, `LoggerLike`), so the branch matrix is unit-testable without a running host.
+`ToolGate` defines the invariant flow (hard-block → allow-list → no-behavior → optional Bash LANCET → headless → verdict → remember → delegate); each concrete gate implements three hooks — `analyze()` / `buildKey()` / `delegate()` — plus its schema and subject extraction. Adding a new covered tool means adding one subclass, not touching the pipeline. Collaborators are injected as narrow interfaces (`AllowListLike`, `ModelInvokerLike`, `LoggerLike`), so the branch matrix is unit-testable without a running host.
 
 ## LLM risk analysis: persistent RPC session
 
@@ -194,6 +250,10 @@ Operations are never executed by the extension itself. After passing the approva
 - `hub` gating is binary regex (no LLM analysis, no dialog).
 - Permanent allow-list entries predate rule upgrades; hard-blocks always win over them.
 
+- The local LANCET model is experimental and CPU-only; `not_flagged` is not a safety guarantee.
+- LANCET covers behavior-positive Bash commands only. Eval, hub, write, and edit keep their existing gates.
+- The v0.4.2 model is downloaded and verified locally; no hosted inference path is provided.
+
 ## Install
 
 ```sh
@@ -214,6 +274,8 @@ tools:
 - `extensions: [smart-approve]` — load the extension from `node_modules`
 
 The custom "bash"/"eval" tools shadow the built-ins by name — no `bash.enabled` change is needed. Restart the host after installing or editing.
+
+Run `/lancet-guard setup` after installation if you want the optional local model. The package does not download model data automatically.
 
 ## Configuration
 
@@ -238,7 +300,8 @@ Config lives at `~/.omp/agent/smart-approve.json` (or `~/.pi/agent/smart-approve
   "contextMaxChars": 3000,
   "analysisTimeoutMs": 30000,
   "rpcIdleTimeoutMs": 600000,
-  "model": "@tiny"
+  "model": "@tiny",
+  "lancet": { "enabled": false }
 }
 ```
 
@@ -257,6 +320,7 @@ Config lives at `~/.omp/agent/smart-approve.json` (or `~/.pi/agent/smart-approve
 | `analysisTimeoutMs` | `30000` | Per-attempt timeout for the RPC risk-analysis prompt in ms; `0` = no timeout. On timeout/failure the model chain advances @tiny → @smol → @default, then falls back per mode |
 | `rpcIdleTimeoutMs` | `600000` | Idle lifetime of the persistent RPC child in ms; `0` = keep alive until session end |
 | `model` | `@tiny` | Model spec for risk analysis (role alias, provider/id, or bare id) |
+| `lancet.enabled` | `false` | Opt-in local LANCET v0.4.2 scoring for behavior-positive Bash; missing or invalid model state fails closed while enabled |
 
 ## Allow-list (decision memory)
 
@@ -286,8 +350,9 @@ Session allows are in-memory only, cleared on restart. You can edit or delete th
 | `ctx.invokeTool(params, opts)` | Delegate execution to the native tool of the same name |
 | `child_process.spawn(hostBin, ["--mode", "rpc", ...])` | Persistent RPC child for LLM risk analysis |
 | `pi.on("tool_call", handler)` | hub launch gating + write/edit protected-path interception |
-| `pi.on("session_start" / "session_shutdown")` | Status chip / RPC child cleanup |
+| `pi.on("session_start" / "session_shutdown")` | Status chips / RPC and LANCET classifier cleanup |
 | `pi.registerCommand("smart-approve", …)` | Runtime mode switching + status |
+| `pi.registerCommand("lancet-guard", …)` | LANCET status, setup, toggle, and non-executing check |
 | `ctx.hasUI` | Detect headless/subagent context |
 | `ctx.sessionManager.getBranch()` / `getEntries()` | Gather session context for LLM review |
 | `ctx.ui.setStatus / notify / confirm / select` | Status, notifications, dialogs |
@@ -298,6 +363,7 @@ Session allows are in-memory only, cleared on restart. You can edit or delete th
 ```
 smart-approve/
 ├── README.md
+├── THIRD_PARTY.md       ← adapted SpecPi/LANCET and dependency notices
 ├── package.json          ← omp.extensions / pi.extensions manifest
 ├── LICENSE               ← MIT
 ├── src/
@@ -305,16 +371,18 @@ smart-approve/
 │   ├── gate.ts           ← ToolGate (abstract template method) + dep contracts
 │   ├── bash-tool.ts      ← BashToolGate (shadows built-in, delegates)
 │   ├── eval-tool.ts      ← EvalToolGate (shadows built-in, delegates)
-│   ├── policy.ts         ← AutoDecisionPolicy (auto-mode verdict rules)
-│   ├── mode-manager.ts   ← ModeManager (runtime switching + status)
+│   ├── config.ts         ← ConfigStore and opt-in LANCET setting
 │   ├── behaviors.ts      ← bash behavior catalog (hard/deny/review tiers) + git parser
 │   ├── eval-analyzer.ts  ← EvalCodeBehaviorAnalyzer (subprocess intent)
 │   ├── hub-guard.ts      ← HubLaunchGuard (hub op:"start" regex rules)
+│   ├── lancet/
+│   │   ├── commands.ts   ← lifecycle commands and user-facing status
+│   │   ├── runtime.ts    ← lazy CPU runtime and classifier cache
+│   │   ├── model-store.ts / model-manifest.ts
+│   │   └── classifier.ts / tokenizer.ts / zip.ts
 │   ├── types.ts          ← ExtensionAPI, ToolDefinition, DangerAnalysis, …
 │   ├── host.ts           ← HostResolver + ModelInvoker (persistent RPC)
-│   ├── rpc-invoker.ts    ← RPC client: spawn/reuse/kill omp --mode rpc child
 │   ├── paths.ts          ← ProtectedPathMatcher (symlink-aware)
-│   ├── config.ts         ← ConfigStore (load / update / persist)
 │   ├── allowlist.ts      ← AllowList (session + permanent)
 │   ├── context.ts        ← SessionContextGatherer
 │   ├── dialog.ts         ← confirmWithRemember + formatAnalysis
@@ -325,16 +393,17 @@ smart-approve/
 │       └── rotating-log.ts
 └── dist/
     └── index.js          ← bundled output (bun build)
-```
 
+```
 ### Runtime artifacts
 
 ```
-~/.omp/agent/smart-approve.json          — config (user-editable; mode toggles persist here)
-~/.omp/agent/smart-approve-allow.json    — permanent allow-list (auto-maintained)
-~/.omp/logs/smart-approve.log            — diagnostic log
-```
+~/.omp/agent/smart-approve.json                         — config (user-editable; mode toggles persist here)
+~/.omp/agent/smart-approve-allow.json                   — permanent allow-list (auto-maintained)
+~/.omp/logs/smart-approve.log                           — diagnostic log
+~/.omp/agent/lancet-guard/lancet-nano-v0.4.2/           — checksum-verified model files after setup
 
+```
 ## License
 
-MIT
+Smart Approve source code is MIT-licensed. See [`THIRD_PARTY.md`](THIRD_PARTY.md) for the adapted SpecPi runtime, ONNX Runtime dependency, model license, and notice boundaries.
