@@ -5,7 +5,7 @@ Smart Approve remains MIT-licensed. The local LANCET integration adapts the foll
 - **SpecPi LANCET runtime** — adapted from Tanner Middleton's `specpi-lancet-guard` package in [SpecPi](https://github.com/TannerMidd/SpecPi). The source runtime is MIT-licensed. Smart Approve keeps the adapted tokenizer, classifier, bounded ZIP reader, and model-store logic under the project MIT license while retaining the original attribution.
 - **LANCET Nano v0.4.2 INT8 model** — downloaded separately from the pinned [LANCET-model v0.4.2 release](https://github.com/TannerMidd/LANCET-model/releases/tag/v0.4.2). The model release is Apache-2.0 and includes its own `MODEL-LICENSE.md`, `NOTICE.txt`, and third-party notices. Smart Approve does not redistribute the model archive or extracted model files in the npm package.
 - **CodeT5+ upstream model** — the LANCET release identifies the Salesforce CodeT5+ upstream weights and supplies the applicable BSD-3-Clause notice in its model bundle. The upstream weights are part of the separately downloaded model artifact, not this package.
-- **onnxruntime-node 1.30.0** — the exact CPU runtime dependency used for local inference. ONNX Runtime is MIT-licensed; its package distribution contains the applicable notices.
+- **onnxruntime-node 1.30.0 and onnxruntime-common 1.30.0** — the exact CPU runtime packages used for local inference. ONNX Runtime is MIT-licensed; their package distributions contain the applicable notices.
 
 ## Network and artifact boundary
 

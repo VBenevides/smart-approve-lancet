@@ -260,18 +260,26 @@ Operations are never executed by the extension itself. After passing the approva
 npm install smart-approve
 ```
 
+To build and install the current checkout locally:
+
+```sh
+./local/install-locally.sh
+```
+
+The script performs a production build, bundles the ONNX Runtime JavaScript loader, installs its CPU runtime dependencies and native bindings beside the extension, places the package under `~/.omp/agent/node_modules/smart-approve`, and idempotently registers its absolute extension path in `~/.omp/agent/config.yml`.
+
 Then configure OMP to load the extension:
 
 ```yaml
 # ~/.omp/agent/config.yml   (or ~/.pi/agent/config.yml for pi-agent)
 extensions:
-  - smart-approve
+  - /absolute/path/to/.omp/agent/node_modules/smart-approve/dist/index.js
 tools:
   approvalMode: yolo
 ```
 
 - `tools.approvalMode: yolo` — auto-approve safe operations; this extension is the sole gate for dangerous ones
-- `extensions: [smart-approve]` — load the extension from `node_modules`
+- `extensions` must contain the extension file path; the local installer writes the absolute path automatically.
 
 The custom "bash"/"eval" tools shadow the built-ins by name — no `bash.enabled` change is needed. Restart the host after installing or editing.
 
