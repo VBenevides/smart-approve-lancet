@@ -312,12 +312,17 @@ test("bash: auto mode AI block returns auto-blocked", async () => {
   assert.match(h.calls.notify[0], /Auto-blocked/);
 });
 
-test("bash: auto fallback regex blocks deny-tier (rm -rf ~)", async () => {
-  const h = makeHarness({ mode: "auto" }, { analyzeResult: null });
+test("bash: home deletion is hard-blocked before LANCET and LLM", async () => {
+  const h = makeHarness({ mode: "auto" }, {
+    analyzeResult: null,
+    lancetResult: { classification: "not_flagged", score: 0.01, reason: null },
+  });
   const r = await run(BashToolGate, h, { command: "rm -rf ~" });
   assert.equal(r.isError, true);
-  assert.deepEqual(r.details, { blocked: true, reason: "auto" });
+  assert.deepEqual(r.details, { blocked: true, reason: blockedLabel(r) });
   assert.equal(h.calls.delegate, 0);
+  assert.equal(h.calls.analyze, 0);
+  assert.equal(h.calls.lancet, 0);
 });
 
 test("bash: auto fallback regex allows review-tier when AI absent", async () => {

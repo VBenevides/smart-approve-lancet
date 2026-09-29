@@ -78,8 +78,6 @@ const DANGER_RULES: Array<{ pattern: RegExp; behavior: string }> = [
 
   // — Root / system directories —
   { pattern: /\brm\b.*\s\/(?:\s|$)/, behavior: "delete-root" },
-  { pattern: /\brm\b.*\s\/(?:usr|etc|var|bin|sbin|boot|dev|proc|sys|root|home|Library)\b/,
-    behavior: "delete-sys-dir" },
 
   // — Fork bomb / resource exhaustion —
   { pattern: /:\(\)\s*\{\s*:\|:\s*&\s*\}\s*;:/, behavior: "fork-bomb" },
@@ -289,11 +287,68 @@ function analyzeGit(args: string[]): string[] {
   }
 }
 
+// Target normalization follows SpecPi's local LANCET rule semantics: resolve
+// root/home/system aliases before deciding whether a recursive forced delete
+// is hard-blocked. Smart Approve keeps the resulting behavior in its own
+// catalog rather than importing SpecPi's second classifier.
+const SYSTEM_DIRS: Record<string, true> = {
+  usr: true, etc: true, bin: true, sbin: true, lib: true, lib64: true,
+  boot: true, var: true, opt: true, srv: true, home: true, root: true,
+  users: true, dev: true, system: true, system32: true, windows: true,
+};
+const HOME_CONTAINERS: Record<string, true> = { home: true, users: true };
+const HOME_DEPTH = 2;
+
+export function normalizeDeleteTarget(raw: string): "root" | "home" | "system" | "other" {
+  const head = /^["'`]*(\$\{HOME\}|\$HOME|~|\/)([\w.\-/*]*)(.*)$/s.exec(raw);
+  if (!head || !/^["'`;,)}\]]*$/.test(head[3])) return "other";
+
+  const base: "root" | "home" = head[1] === "/" ? "root" : "home";
+  const rest = head[2];
+  if (head[1] === "~" && /^[A-Za-z_][\w.-]*$/.test(rest)) return "home";
+
+  const home = "\u0000home\u0000";
+  const parts: string[] = base === "home" ? new Array(HOME_DEPTH).fill(home) : [];
+  for (const part of rest.split("/")) {
+    if (part === "" || part === "." || part === "*") continue;
+    if (part === "..") {
+      if (parts.length > 0) parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
+
+  if (parts.length === 0) return "root";
+  if (parts.length === HOME_DEPTH && parts.every((part) => part === home)) return "home";
+  if (parts.length === HOME_DEPTH && HOME_CONTAINERS[parts[0].toLowerCase()]) return "home";
+  if (parts.length < HOME_DEPTH && parts[0] === home) return "system";
+  if (parts.length === 1 && SYSTEM_DIRS[parts[0].toLowerCase()]) return "system";
+  return "other";
+}
+
+function recursiveDeleteTargets(cmd: string): string[] {
+  const targets: string[] = [];
+  const rm = /\brm\b/g;
+  let hit: RegExpExecArray | null;
+  while ((hit = rm.exec(cmd)) !== null) {
+    const rest = cmd.slice(hit.index + hit[0].length).split(/[|;&\n]/)[0];
+    if (!/(?:^|\s)-[a-zA-Z]*r[a-zA-Z]*\b|--recursive\b/.test(rest)) continue;
+    if (!/(?:^|\s)-[a-zA-Z]*f[a-zA-Z]*\b|--force\b/.test(rest)) continue;
+
+    for (const token of rest.split(/\s+/)) {
+      if (token !== "" && !token.startsWith("-")) targets.push(token);
+    }
+  }
+  return targets;
+}
+
 // ── Composite analysis ───────────────────────────────────────────────
 
 /** Behaviors that are always hard-blocked (no LLM review, no allow). */
 const HARD_BLOCK_BEHAVIORS: Record<string, true> = {
   "delete-root": true,
+  "delete-home": true,
+  "delete-sys-dir": true,
   "fork-bomb": true,
   "remote-fetch-exec": true,
   "write-sensitive-file": true,
@@ -306,7 +361,6 @@ const HARD_BLOCK_BEHAVIORS: Record<string, true> = {
  *  verdict when auto mode falls back to regex-only decisions. */
 const DENY_TIER_BEHAVIORS: Record<string, true> = {
   "git-force-push-protected": true,
-  "delete-home": true,
 };
 
 /** Normalize command for stable regex matching. */
@@ -330,6 +384,15 @@ export function analyzeCommand(cmd: string): DangerAnalysis {
   const gitArgs = extractLeadingArgs(tokens, "git");
   if (gitArgs) {
     for (const b of analyzeGit(gitArgs)) behaviorSet.add(b);
+  }
+
+  // Normalize recursive forced-delete targets before regex matching so
+  // split/long flags and shell aliases cannot bypass local hard rules.
+  for (const target of recursiveDeleteTargets(c)) {
+    const targetType = normalizeDeleteTarget(target);
+    if (targetType === "root") behaviorSet.add("delete-root");
+    if (targetType === "home") behaviorSet.add("delete-home");
+    if (targetType === "system") behaviorSet.add("delete-sys-dir");
   }
 
   // 2. Regex rules (secondary net)
