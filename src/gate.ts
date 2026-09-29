@@ -52,6 +52,19 @@ export interface ModelInvokerLike {
   ): Promise<RiskAnalysis | null>;
 }
 
+export type LancetClassification = "risky" | "not_flagged" | "review";
+
+export interface LancetVerdict {
+  classification: LancetClassification;
+  score: number | null;
+  reason: string | null;
+}
+
+/** Narrow local-model contract; the gate owns policy, the scorer owns inference. */
+export interface LancetGuardLike {
+  score(command: string, shell: "bash", signal?: AbortSignal): Promise<LancetVerdict>;
+}
+
 
 /** Shared collaborators injected into every gate instance. */
 export interface GateDeps {
@@ -59,6 +72,8 @@ export interface GateDeps {
   allowList: AllowListLike;
   contextGatherer: ContextGathererLike;
   modelInvoker: ModelInvokerLike;
+  /** Optional local LANCET scorer; only BashToolGate opts into it. */
+  lancet?: LancetGuardLike;
   policy: AutoDecisionPolicy;
   logger: LoggerLike;
   lang: Lang;
@@ -118,6 +133,9 @@ export abstract class ToolGate {
     return this.delegate(params, signal, onUpdate, ctx);
   }
 
+  /** Whether this gate may consult the optional local LANCET scorer. */
+  protected usesLancet(): boolean { return false; }
+
   // ── Registration ───────────────────────────────────────────────────
 
   /** Register this gate as a custom tool shadowing the native built-in. */
@@ -142,7 +160,7 @@ export abstract class ToolGate {
     onUpdate: ToolUpdateCallback,
     ctx: ExtensionCtx,
   ): Promise<AgentToolResult> {
-    const { config, allowList, contextGatherer, modelInvoker, policy, logger, lang, t } = this.deps;
+    const { config, allowList, contextGatherer, modelInvoker, lancet, policy, logger, lang, t } = this.deps;
 
     const subject = this.extractSubject(params);
     if (!subject.trim()) {
@@ -176,7 +194,61 @@ export abstract class ToolGate {
       return this.delegate(params, signal, onUpdate, ctx);
     }
 
-    // 4. Dangerous but reviewable.  Headless contexts block unless auto
+    // 4. LANCET is a second opinion only after Smart Approve's local behavior
+    //    detector. A missing/invalid result fails closed; it never falls
+    //    through to the existing LLM path as if the model had not run.
+    if (this.usesLancet() && lancet) {
+      let verdict: LancetVerdict;
+      try {
+        verdict = await lancet.score(subject, "bash", signal);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        logger.log(`${this.toolName}: LANCET unavailable — ${message}`);
+        return this.textError(
+          `Blocked: LANCET unavailable (${message})\n${subjectLabel}: ${subject}`,
+          { blocked: true, reason: "lancet-unavailable", source: "lancet" },
+        );
+      }
+
+      if (
+        !verdict ||
+        (verdict.classification !== "not_flagged" &&
+          verdict.classification !== "review" &&
+          verdict.classification !== "risky") ||
+        typeof verdict.score !== "number" ||
+        !Number.isFinite(verdict.score)
+      ) {
+        logger.log(`${this.toolName}: LANCET returned an invalid verdict`);
+        return this.textError(
+          `Blocked: LANCET returned an invalid verdict\n${subjectLabel}: ${subject}`,
+          { blocked: true, reason: "lancet-invalid", source: "lancet" },
+        );
+      }
+
+      if (verdict.classification === "not_flagged") {
+        logger.log(`${this.toolName}: LANCET not_flagged, delegating to native`);
+        return this.delegate(params, signal, onUpdate, ctx);
+      }
+
+      if (verdict.classification === "risky") {
+        logger.log(`${this.toolName}: LANCET risky (${verdict.score})`);
+        return this.textError(
+          `Blocked: LANCET flagged the command as risky\n${subjectLabel}: ${subject}`,
+          {
+            blocked: true,
+            reason: "lancet-risky",
+            source: "lancet",
+            score: verdict.score,
+          },
+        );
+      }
+
+      logger.log(
+        `${this.toolName}: LANCET review (${verdict.score})${verdict.reason ? ` reason=${verdict.reason}` : ""}`,
+      );
+    }
+
+    // 5. Dangerous but reviewable. Headless contexts block unless auto
     //    mode is configured to decide by AI.
     const autoMode = config.mode === "auto";
     if (!hasUI && !(autoMode && config.autoInHeadless)) {

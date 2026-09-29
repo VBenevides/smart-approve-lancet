@@ -12,7 +12,7 @@ import { AutoDecisionPolicy } from "./policy.ts";
 import type { SmartApproveConfig } from "./config.ts";
 import { BashToolGate } from "./bash-tool.ts";
 import { EvalToolGate } from "./eval-tool.ts";
-import type { GateDeps, ToolGate } from "./gate.ts";
+import type { GateDeps, LancetVerdict, ToolGate } from "./gate.ts";
 
 function makeConfig(overrides: Partial<SmartApproveConfig> = {}): SmartApproveConfig {
   return {
@@ -36,6 +36,7 @@ function makeConfig(overrides: Partial<SmartApproveConfig> = {}): SmartApproveCo
 interface Calls {
   delegate: number;
   analyze: number;
+  lancet: number;
   notify: string[];
   session: string[];
   permanent: string[];
@@ -54,6 +55,8 @@ interface HarnessOptions {
   hasUI?: boolean;
   isAllowed?: boolean;
   analyzeResult?: RiskAnalysis | null;
+  lancetResult?: LancetVerdict;
+  lancetError?: Error;
 }
 
 function makeHarness(
@@ -61,7 +64,7 @@ function makeHarness(
   opts: HarnessOptions = {},
 ): Harness {
   const config = makeConfig(configOverrides);
-  const calls: Calls = { delegate: 0, analyze: 0, notify: [], session: [], permanent: [] };
+  const calls: Calls = { delegate: 0, analyze: 0, lancet: 0, notify: [], session: [], permanent: [] };
   const harness: Harness = {
     deps: {
       config,
@@ -115,6 +118,15 @@ function makeHarness(
     selectResult: undefined,
     selectChoices: null,
   };
+  if (opts.lancetResult !== undefined || opts.lancetError) {
+    harness.deps.lancet = {
+      score: async () => {
+        calls.lancet += 1;
+        if (opts.lancetError) throw opts.lancetError;
+        return opts.lancetResult as LancetVerdict;
+      },
+    };
+  }
   return harness;
 }
 
@@ -151,21 +163,106 @@ test("bash: empty command returns (no command) without delegating", async () => 
 });
 
 test("bash: hard-block wins over everything", async () => {
-  const h = makeHarness({}, { isAllowed: true });
+  const h = makeHarness({}, {
+    isAllowed: true,
+    lancetResult: { classification: "not_flagged", score: 0.01, reason: null },
+  });
   const r = await run(BashToolGate, h, { command: "rm -rf /" });
   assert.equal(r.isError, true);
   assert.deepEqual(r.details, { blocked: true, reason: blockedLabel(r) });
   assert.equal(h.calls.delegate, 0);
   assert.equal(h.calls.analyze, 0);
+  assert.equal(h.calls.lancet, 0);
 });
 
 test("bash: allowlist hit delegates without dialog", async () => {
-  const h = makeHarness({}, { isAllowed: true });
+  const h = makeHarness({}, {
+    isAllowed: true,
+    lancetResult: { classification: "not_flagged", score: 0.01, reason: null },
+  });
   const r = await run(BashToolGate, h, { command: "git push -f origin main" });
   assert.equal(r.content[0].text, "native-run");
   assert.equal(h.calls.delegate, 1);
   assert.equal(h.calls.analyze, 0);
+  assert.equal(h.calls.lancet, 0);
   assert.equal(h.selectChoices, null);
+});
+
+test("bash: no behavior skips LANCET", async () => {
+  const h = makeHarness({}, {
+    lancetResult: { classification: "not_flagged", score: 0.01, reason: null },
+  });
+  const r = await run(BashToolGate, h, { command: "ls -la" });
+  assert.equal(r.content[0].text, "native-run");
+  assert.equal(h.calls.lancet, 0);
+});
+
+test("bash: LANCET not_flagged delegates without LLM analysis", async () => {
+  const h = makeHarness({}, {
+    lancetResult: { classification: "not_flagged", score: 0.1, reason: null },
+  });
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.content[0].text, "native-run");
+  assert.equal(h.calls.lancet, 1);
+  assert.equal(h.calls.analyze, 0);
+  assert.equal(h.selectChoices, null);
+});
+
+test("bash: LANCET risky blocks before LLM or dialog", async () => {
+  const h = makeHarness({}, {
+    lancetResult: { classification: "risky", score: 0.95, reason: null },
+  });
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.isError, true);
+  assert.deepEqual(r.details, {
+    blocked: true,
+    reason: "lancet-risky",
+    source: "lancet",
+    score: 0.95,
+  });
+  assert.equal(h.calls.delegate, 0);
+  assert.equal(h.calls.analyze, 0);
+  assert.equal(h.selectChoices, null);
+});
+
+test("bash: LANCET review continues through the existing approval path", async () => {
+  const h = makeHarness({}, {
+    lancetResult: { classification: "review", score: 0.5, reason: "uncertainty-band" },
+  });
+  h.selectResult = "Allow for this session";
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.content[0].text, "native-run");
+  assert.equal(h.calls.lancet, 1);
+  assert.equal(h.calls.analyze, 1);
+  assert.equal(h.calls.delegate, 1);
+});
+
+test("bash: LANCET failure blocks instead of falling through", async () => {
+  const h = makeHarness({}, { lancetError: new Error("model unavailable") });
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.isError, true);
+  assert.deepEqual(r.details, {
+    blocked: true,
+    reason: "lancet-unavailable",
+    source: "lancet",
+  });
+  assert.match(r.content[0].text, /model unavailable/);
+  assert.equal(h.calls.delegate, 0);
+  assert.equal(h.calls.analyze, 0);
+});
+
+test("bash: malformed LANCET verdict fails closed", async () => {
+  const h = makeHarness({}, {
+    lancetResult: { classification: "review", score: Number.NaN, reason: null },
+  });
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.isError, true);
+  assert.deepEqual(r.details, {
+    blocked: true,
+    reason: "lancet-invalid",
+    source: "lancet",
+  });
+  assert.equal(h.calls.delegate, 0);
 });
 
 test("bash: headless interactive blocks dangerous commands", async () => {

@@ -54,6 +54,9 @@ export class BashToolGate extends ToolGate {
     return extractedCwd !== baseCwd ? extractedCwd : p.cwd ?? baseCwd;
   }
 
+  /** Bash is the only current gate whose subject matches LANCET's input contract. */
+  protected usesLancet(): boolean { return true; }
+
   protected analyze(subject: string) {
     return analyzeCommand(subject);
   }
