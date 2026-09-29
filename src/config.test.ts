@@ -65,6 +65,61 @@ describe("LANCET configuration", () => {
 });
 
 describe("LANCET lifecycle commands", () => {
+  test("status reports exact disabled, lazy, and loaded states without initialization", () => {
+    const directory = path.join(temporary, "status");
+    const store = new ConfigStore(logger, directory);
+    let loadedProbeCalls = 0;
+    const lazyHandler = new LancetCommandHandler({
+      configStore: store,
+      logger,
+      agentDir: directory,
+      classifierLoaded: () => {
+        loadedProbeCalls++;
+        return false;
+      },
+    });
+
+    assert.equal(
+      lazyHandler.status(),
+      "Smart Approve LANCET: OFF\nSmart Approve is using its default review flow.",
+    );
+    assert.equal(loadedProbeCalls, 0);
+
+    store.update({ lancet: { enabled: true } });
+    assert.equal(
+      lazyHandler.status(),
+      [
+        "Smart Approve LANCET: ON",
+        "Model: lazy / not loaded yet",
+        "",
+        "Policy:",
+        "  NOT_FLAGGED → allow",
+        "  REVIEW      → Smart Approve LLM",
+        "  RISKY       → block",
+      ].join("\n"),
+    );
+    assert.equal(loadedProbeCalls, 1);
+
+    const loadedHandler = new LancetCommandHandler({
+      configStore: store,
+      logger,
+      agentDir: directory,
+      classifierLoaded: () => true,
+    });
+    assert.equal(
+      loadedHandler.status(),
+      [
+        "Smart Approve LANCET: ON",
+        "Model: loaded",
+        "",
+        "Policy:",
+        "  NOT_FLAGGED → allow",
+        "  REVIEW      → Smart Approve LLM",
+        "  RISKY       → block",
+      ].join("\n"),
+    );
+  });
+
   test("refuses on before verification and setup uses the injected installer", async () => {
     const directory = path.join(temporary, "commands-on");
     const store = new ConfigStore(logger, directory);

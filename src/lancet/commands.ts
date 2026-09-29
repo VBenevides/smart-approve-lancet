@@ -5,12 +5,11 @@ import type { SmartApproveConfig } from "../config.ts";
 import {
   installModel as installPinnedModel,
   modelDirectory,
-  modelState,
   modelVerified,
   type InstallModelOptions,
   type InstallResult,
 } from "./model-store.ts";
-import { createLancetScorer, releaseClassifier } from "./runtime.ts";
+import { classifierLoaded, createLancetScorer, releaseClassifier } from "./runtime.ts";
 
 export interface LancetConfigStoreLike {
   readonly config: SmartApproveConfig;
@@ -30,6 +29,7 @@ export interface LancetCommandDeps {
   agentDir: string;
   scorer?: LancetScorerLike;
   installModel?: InstallModelFunction;
+  classifierLoaded?: () => boolean;
 }
 
 /** Handles explicit LANCET lifecycle actions without executing the checked command. */
@@ -37,11 +37,12 @@ export class LancetCommandHandler {
   private readonly directory: string;
   private readonly scorer: LancetScorerLike;
   private readonly installModel: InstallModelFunction;
-
+  private readonly isClassifierLoaded: () => boolean;
   constructor(private readonly deps: LancetCommandDeps) {
     this.directory = modelDirectory(deps.agentDir);
     this.scorer = deps.scorer ?? createLancetScorer(this.directory);
     this.installModel = deps.installModel ?? installPinnedModel;
+    this.isClassifierLoaded = deps.classifierLoaded ?? classifierLoaded;
   }
 
   async handle(args: unknown, ctx: ExtensionCtx): Promise<void> {
@@ -72,19 +73,23 @@ export class LancetCommandHandler {
   }
 
   status(): string {
-    const state = modelState(this.directory);
-    const verified = state.installed && modelVerified(this.directory);
-    const model = verified
-      ? "installed and verified"
-      : state.installed
-        ? `present but not verified (${state.problem ?? "checksum not verified"})`
-        : state.problem ?? "not downloaded";
+    const enabled = this.deps.configStore.config.lancet?.enabled === true;
+    if (!enabled) {
+      return [
+        "Smart Approve LANCET: OFF",
+        "Smart Approve is using its default review flow.",
+      ].join("\n");
+    }
+
     return [
-      `[lancet-guard] ${this.deps.configStore.config.lancet?.enabled ? "enabled" : "disabled"}`,
-      `model: ${model}`,
-      `model id: lancet-nano-v0.4.2`,
-      `fail-closed when enabled: yes`,
-    ].join("; ");
+      "Smart Approve LANCET: ON",
+      `Model: ${this.isClassifierLoaded() ? "loaded" : "lazy / not loaded yet"}`,
+      "",
+      "Policy:",
+      "  NOT_FLAGGED → allow",
+      "  REVIEW      → Smart Approve LLM",
+      "  RISKY       → block",
+    ].join("\n");
   }
 
   private async setup(ctx: ExtensionCtx): Promise<void> {
