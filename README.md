@@ -21,15 +21,13 @@ LLM calls bash / eval
    ToolGate.execute() — shared decision pipeline (template method)
        ├─ hard-block (rm -rf /, fork bomb, curl|sh, eval subprocess +
        │  destructive payload…) → block always
-       ├─ allow-list hit (session or permanent) → execute
-       ├─ no behaviors → execute (zero interruption)
+       ├─ Bash + LANCET enabled (after hard-block) → local CPU model
+       │      ├─ unavailable / invalid / risky → block
+       │      ├─ review → existing approval path ↓
+       │      └─ not_flagged → continue through the pipeline
+       ├─ allow-list hit (after LANCET, when enabled) → execute
+       ├─ no behaviors (after LANCET, when enabled) → execute
        └─ dangerous behavior → needs a verdict ↓
-              │
-              ├─ Bash + LANCET enabled → local CPU model
-              │      ├─ unavailable / invalid → block (fail closed)
-              │      ├─ risky → block
-              │      ├─ not_flagged → execute
-              │      └─ review → existing approval path ↓
               │
               └─ eval or LANCET disabled → existing approval path ↓
                                   │
@@ -86,12 +84,11 @@ Auto-mode decision rules:
 Smart Approve can add a local, CPU-only LANCET Nano scorer for **Bash only**. It is disabled by default. Smart Approve keeps ownership of the policy chain:
 
 1. Smart Approve hard-block rules.
-2. Remembered allow-list.
-3. No-behavior fast pass.
-4. LANCET, only for behavior-positive Bash commands when enabled.
-5. Existing headless, LLM, auto-policy, or interactive-dialog handling for LANCET `review`.
+2. LANCET scores every non-hard-blocked Bash command when enabled.
+3. Remembered allow-list, then the no-behavior fast pass, for `not_flagged`.
+4. Existing headless, LLM, auto-policy, or interactive-dialog handling for LANCET `review` and remaining dangerous commands.
 
-LANCET `risky` blocks before LLM or dialog. `not_flagged` delegates to the native Bash tool, but is **not a safety guarantee**. `review` continues through the existing Smart Approve approval path. A missing, damaged, invalid, or unavailable model fails closed instead of silently bypassing approval.
+LANCET `risky` blocks before allow-list, fast paths, LLM, or dialog. `not_flagged` continues through the native Smart Approve pipeline, but is **not a safety guarantee**. `review` continues through the existing Smart Approve approval path and cannot be bypassed by an allow-list entry or a no-behavior fast pass. A missing, damaged, invalid, or unavailable model fails closed instead of silently bypassing approval.
 
 The integration targets the local **SpecPi LANCET Nano v0.4.2 CPU INT8 model**, identifier `lancet-nano-v0.4.2`. It does not use v0.4.1, Jev, a Jev package, a hosted classifier, or a remote inference endpoint. The v0.4.2 release metadata pins `reviewThreshold` `0.5272825855548885` and `riskyThreshold` `0.9600226519174887`; the exact archive and file digests are in `src/lancet/model-manifest.ts`.
 
@@ -146,7 +143,7 @@ SmartApprove (orchestrator)
  └─ HubLaunchGuard       — hub op:"start" regex rules
 ```
 
-`ToolGate` defines the invariant flow (hard-block → allow-list → no-behavior → optional Bash LANCET → headless → verdict → remember → delegate); each concrete gate implements three hooks — `analyze()` / `buildKey()` / `delegate()` — plus its schema and subject extraction. Adding a new covered tool means adding one subclass, not touching the pipeline. Collaborators are injected as narrow interfaces (`AllowListLike`, `ModelInvokerLike`, `LoggerLike`), so the branch matrix is unit-testable without a running host.
+`ToolGate` defines the invariant flow (hard-block → optional Bash LANCET → allow-list → no-behavior → headless → verdict → remember → delegate); each concrete gate implements three hooks — `analyze()` / `buildKey()` / `delegate()` — plus its schema and subject extraction. Adding a new covered tool means adding one subclass, not touching the pipeline. Collaborators are injected as narrow interfaces (`AllowListLike`, `ModelInvokerLike`, `LoggerLike`), so the branch matrix is unit-testable without a running host.
 
 ## LLM risk analysis: persistent RPC session
 
@@ -250,8 +247,7 @@ Operations are never executed by the extension itself. After passing the approva
 - `hub` gating is binary regex (no LLM analysis, no dialog).
 - Permanent allow-list entries predate rule upgrades; hard-blocks always win over them.
 
-- The local LANCET model is experimental and CPU-only; `not_flagged` is not a safety guarantee.
-- LANCET covers behavior-positive Bash commands only. Eval, hub, write, and edit keep their existing gates.
+- The local LANCET model is experimental and CPU-only; `not_flagged` is not a safety guarantee. When enabled, LANCET scores every non-hard-blocked Bash command.
 - The v0.4.2 model is downloaded and verified locally; no hosted inference path is provided.
 
 ## Install

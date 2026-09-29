@@ -190,18 +190,51 @@ test("bash: allowlist hit delegates without dialog", async () => {
   assert.equal(r.content[0].text, "native-run");
   assert.equal(h.calls.delegate, 1);
   assert.equal(h.calls.analyze, 0);
-  assert.equal(h.calls.lancet, 0);
+  assert.equal(h.calls.lancet, 1);
   assert.ok(h.calls.logs.some((message) => message.includes("source=allowlist")));
   assert.equal(h.selectChoices, null);
 });
 
-test("bash: no behavior skips LANCET", async () => {
+test("bash: no behavior delegates after LANCET not_flagged", async () => {
   const h = makeHarness({}, {
     lancetResult: { classification: "not_flagged", score: 0.01, reason: null },
   });
   const r = await run(BashToolGate, h, { command: "ls -la" });
   assert.equal(r.content[0].text, "native-run");
-  assert.equal(h.calls.lancet, 0);
+  assert.equal(h.calls.lancet, 1);
+});
+
+test("bash: LANCET risky blocks an allowlist hit", async () => {
+  const h = makeHarness({}, {
+    isAllowed: true,
+    lancetResult: { classification: "risky", score: 0.95, reason: null },
+  });
+  const r = await run(BashToolGate, h, { command: "git push -f origin main" });
+  assert.equal(r.isError, true);
+  assert.deepEqual(r.details, {
+    blocked: true,
+    reason: "lancet-risky",
+    source: "lancet",
+    score: 0.95,
+  });
+  assert.equal(h.calls.lancet, 1);
+  assert.equal(h.calls.delegate, 0);
+});
+
+test("bash: LANCET risky blocks a no-behavior command", async () => {
+  const h = makeHarness({}, {
+    lancetResult: { classification: "risky", score: 0.95, reason: null },
+  });
+  const r = await run(BashToolGate, h, { command: "ls -la" });
+  assert.equal(r.isError, true);
+  assert.deepEqual(r.details, {
+    blocked: true,
+    reason: "lancet-risky",
+    source: "lancet",
+    score: 0.95,
+  });
+  assert.equal(h.calls.lancet, 1);
+  assert.equal(h.calls.delegate, 0);
 });
 
 test("bash: disabled LANCET preserves every native review outcome", async () => {
@@ -247,15 +280,17 @@ test("bash: disabled LANCET preserves every native review outcome", async () => 
   assert.equal(review.calls.lancet, 0);
 });
 
-test("bash: LANCET not_flagged delegates without LLM analysis", async () => {
+test("bash: LANCET not_flagged preserves the headless Smart Approve block", async () => {
   const h = makeHarness({}, {
+    hasUI: false,
     lancetResult: { classification: "not_flagged", score: 0.1, reason: null },
   });
   const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
-  assert.equal(r.content[0].text, "native-run");
+  assert.equal(r.isError, true);
+  assert.deepEqual(r.details, { blocked: true, reason: "no-ui" });
   assert.equal(h.calls.lancet, 1);
   assert.equal(h.calls.analyze, 0);
-  assert.equal(h.selectChoices, null);
+  assert.equal(h.calls.delegate, 0);
 });
 
 test("bash: LANCET risky blocks before LLM or dialog", async () => {
@@ -291,13 +326,15 @@ test("bash: LANCET review continues through the existing approval path", async (
   assert.ok(h.calls.logs.every((message) => message.length < 400));
 });
 
-test("bash: LANCET review LLM allow executes without dialog", async () => {
+test("bash: LANCET review cannot bypass allowlist before LLM allow", async () => {
   const h = makeHarness({}, {
+    isAllowed: true,
     analyzeResult: { risk: "low", recommend: "allow" },
     lancetResult: { classification: "review", score: 0.5, reason: null },
   });
   const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
   assert.equal(r.content[0].text, "native-run");
+  assert.equal(h.calls.lancet, 1);
   assert.equal(h.calls.analyze, 1);
   assert.equal(h.calls.delegate, 1);
   assert.equal(h.selectChoices, null);

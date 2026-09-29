@@ -3,9 +3,9 @@
  *
  * ToolGate owns the decision pipeline that was previously bash-only:
  *
- *   hard-block -> allowlist -> no-behavior -> headless check
- *   -> LLM analysis -> verdict (auto policy or interactive dialog)
- *   -> remember -> delegate
+ *   hard-block -> LANCET (Bash, when enabled) -> allowlist -> no-behavior
+ *   -> headless check -> LLM analysis -> verdict (auto policy or interactive
+ *   dialog) -> remember -> delegate
  *
  * Concrete gates (bash, eval) supply the three tool-specific hooks:
  * analyze() / buildKey() / delegate(), plus the schema and subject
@@ -191,22 +191,10 @@ export abstract class ToolGate {
       return this.textError(`Blocked: ${label}\n${subjectLabel}: ${subject}`, { blocked: true, reason: label });
     }
 
-    // 2. Allowlist hit → delegate directly.
-    if (config.rememberDecisions && allowList.isAllowed(this.toolName, this.buildKey(subject), effectiveCwd)) {
-      logger.log(`${this.toolName}: source=allowlist, delegating to native`);
-      return this.delegate(params, signal, onUpdate, ctx);
-    }
-
-    // 3. No dangerous behavior → delegate directly (zero interruption).
-    if (analysis.behaviors.length === 0) {
-      return this.delegate(params, signal, onUpdate, ctx);
-    }
-
+    // 2. LANCET is a universal second opinion after hard blocks. A
+    //    missing/invalid result fails closed; it never falls through to the
+    //    existing review path as if the model had not run.
     let lancetReview = false;
-
-    // 4. LANCET is a second opinion only after Smart Approve's local behavior
-    //    detector. A missing/invalid result fails closed; it never falls
-    //    through to the existing LLM path as if the model had not run.
     const lancetEnabled = config.lancet?.enabled === true;
     if (this.usesLancet() && lancetEnabled) {
       if (!lancet) {
@@ -256,10 +244,6 @@ export abstract class ToolGate {
       logger.log(
         `${this.toolName}: source=lancet classification=${verdict.classification} score=${score} reason=${reason} latencyMs=${latencyMs}`,
       );
-      if (verdict.classification === "not_flagged") {
-        return this.delegate(params, signal, onUpdate, ctx);
-      }
-
       if (verdict.classification === "risky") {
         return this.textError(
           `Blocked: LANCET flagged the command as risky (score=${score})\n${subjectLabel}: ${subject}`,
@@ -272,13 +256,30 @@ export abstract class ToolGate {
         );
       }
 
-      lancetReview = true;
+      if (verdict.classification === "review") {
+        lancetReview = true;
+        this.safeNotify(
+          ctx,
+          `[Smart Approve LANCET] Review handoff: Smart Approve approval required (score=${score}${verdict.reason ? `, reason=${logText(verdict.reason)}` : ""}).`,
+          "info",
+        );
+      }
+    }
 
-      this.safeNotify(
-        ctx,
-        `[Smart Approve LANCET] Review handoff: Smart Approve approval required (score=${score}${verdict.reason ? `, reason=${logText(verdict.reason)}` : ""}).`,
-        "info",
-      );
+    // 3. Allowlist hit → delegate directly, unless LANCET requires review.
+    if (
+      !lancetReview &&
+      config.rememberDecisions &&
+      allowList.isAllowed(this.toolName, this.buildKey(subject), effectiveCwd)
+    ) {
+      logger.log(`${this.toolName}: source=allowlist, delegating to native`);
+      return this.delegate(params, signal, onUpdate, ctx);
+    }
+
+    // 4. No dangerous behavior → delegate directly (zero interruption),
+    //    unless LANCET requires review.
+    if (!lancetReview && analysis.behaviors.length === 0) {
+      return this.delegate(params, signal, onUpdate, ctx);
     }
 
     // 5. Dangerous but reviewable. Headless contexts block unless auto
@@ -289,7 +290,7 @@ export abstract class ToolGate {
       return this.textError(`${t.blockedNoUI(label)}\n${subjectLabel}: ${subject}`, { blocked: true, reason: "no-ui" });
     }
 
-    // 5. LLM risk analysis (optional; inside execute(), free of the 30s
+    // 6. LLM risk analysis (optional; inside execute(), free of the 30s
     //    EXTENSION_HANDLER_TIMEOUT_MS handler budget).
     let aiResult: RiskAnalysis | null = null;
     let analysisText: string | null = null;
@@ -312,13 +313,13 @@ export abstract class ToolGate {
       }
     }
 
-    // 5b. Interrupted while analyzing → abort, no decision.
+    // 6a. Interrupted while analyzing → abort, no decision.
     if (signal?.aborted) {
       logger.log(`${this.toolName}: aborted during analysis`);
       return { content: [{ type: "text", text: "(aborted)" }], details: { aborted: true } };
     }
 
-    // 6. LANCET review resolves the LLM result to allow/block/ask. A failed
+    // 7. LANCET review resolves the LLM result to allow/block/ask. A failed
     //    or uncertain review falls back to a user confirmation when UI exists.
     if (lancetReview) {
       const reviewVerdict = policy.decideReview(aiResult);
@@ -367,13 +368,13 @@ export abstract class ToolGate {
       allowList.rememberPermanent(this.toolName, this.buildKey(subject), effectiveCwd);
     }
 
-    // 6b. Interrupted after approval → do not execute.
+    // 7a. Interrupted after approval → do not execute.
     if (signal?.aborted) {
       logger.log(`${this.toolName}: aborted after approval, not executing`);
       return { content: [{ type: "text", text: "(aborted)" }], details: { aborted: true } };
     }
 
-    // 7. Execute — delegate to the native tool.
+    // 8. Execute — delegate to the native tool.
     logger.log(`${this.toolName}: approved, delegating to native`);
     return this.delegate(params, signal, onUpdate, ctx);
   }

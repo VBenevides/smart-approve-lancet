@@ -17,7 +17,7 @@ export type AutoFallback = "regex" | "block";
 export type AutoBlockRisk = "high" | "medium";
 
 export interface LancetConfig {
-  /** Enable local LANCET scoring for behavior-positive Bash commands. */
+  /** Enable local LANCET scoring for non-hard-blocked Bash commands. */
   enabled: boolean;
 }
 
