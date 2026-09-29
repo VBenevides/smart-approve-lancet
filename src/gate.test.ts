@@ -277,6 +277,7 @@ test("bash: LANCET risky blocks before LLM or dialog", async () => {
 
 test("bash: LANCET review continues through the existing approval path", async () => {
   const h = makeHarness({}, {
+    analyzeResult: { risk: "medium" },
     lancetResult: { classification: "review", score: 0.5, reason: "uncertainty-band" },
   });
   h.selectResult = "Allow for this session";
@@ -288,6 +289,65 @@ test("bash: LANCET review continues through the existing approval path", async (
   assert.ok(h.calls.logs.some((message) => /source=lancet classification=review .*latencyMs=\d+\.\d/u.test(message)));
   assert.ok(h.calls.notify.some((message) => message.includes("Review handoff")));
   assert.ok(h.calls.logs.every((message) => message.length < 400));
+});
+
+test("bash: LANCET review LLM allow executes without dialog", async () => {
+  const h = makeHarness({}, {
+    analyzeResult: { risk: "low", recommend: "allow" },
+    lancetResult: { classification: "review", score: 0.5, reason: null },
+  });
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.content[0].text, "native-run");
+  assert.equal(h.calls.analyze, 1);
+  assert.equal(h.calls.delegate, 1);
+  assert.equal(h.selectChoices, null);
+});
+
+test("bash: LANCET review LLM block wins over delegation", async () => {
+  const h = makeHarness({}, {
+    analyzeResult: { risk: "low", recommend: "deny" },
+    lancetResult: { classification: "review", score: 0.5, reason: null },
+  });
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.isError, true);
+  assert.deepEqual(r.details, {
+    blocked: true,
+    reason: "lancet-llm-block",
+    source: "smart-approve-llm",
+  });
+  assert.equal(h.calls.analyze, 1);
+  assert.equal(h.calls.delegate, 0);
+  assert.equal(h.selectChoices, null);
+});
+
+test("bash: failed LANCET review asks in an interactive session", async () => {
+  const h = makeHarness({}, {
+    analyzeResult: null,
+    lancetResult: { classification: "review", score: 0.5, reason: null },
+  });
+  h.selectResult = "Allow for this session";
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.content[0].text, "native-run");
+  assert.equal(h.calls.analyze, 1);
+  assert.equal(h.calls.delegate, 1);
+  assert.ok(h.selectChoices);
+});
+
+test("bash: failed LANCET review blocks headless uncertainty", async () => {
+  const h = makeHarness({ mode: "auto", autoInHeadless: true }, {
+    hasUI: false,
+    analyzeResult: null,
+    lancetResult: { classification: "review", score: 0.5, reason: null },
+  });
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.isError, true);
+  assert.deepEqual(r.details, {
+    blocked: true,
+    reason: "lancet-llm-uncertain",
+    source: "unavailable",
+  });
+  assert.equal(h.calls.analyze, 1);
+  assert.equal(h.calls.delegate, 0);
 });
 
 test("bash: LANCET failure blocks instead of falling through", async () => {

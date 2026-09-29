@@ -202,6 +202,8 @@ export abstract class ToolGate {
       return this.delegate(params, signal, onUpdate, ctx);
     }
 
+    let lancetReview = false;
+
     // 4. LANCET is a second opinion only after Smart Approve's local behavior
     //    detector. A missing/invalid result fails closed; it never falls
     //    through to the existing LLM path as if the model had not run.
@@ -270,6 +272,8 @@ export abstract class ToolGate {
         );
       }
 
+      lancetReview = true;
+
       this.safeNotify(
         ctx,
         `[lancet-guard] Review handoff: Smart Approve approval required (score=${score}${verdict.reason ? `, reason=${logText(verdict.reason)}` : ""}).`,
@@ -314,8 +318,28 @@ export abstract class ToolGate {
       return { content: [{ type: "text", text: "(aborted)" }], details: { aborted: true } };
     }
 
-    // 6. Verdict: auto mode → policy; interactive → dialog.
-    if (autoMode) {
+    // 6. LANCET review resolves the LLM result to allow/block/ask. A failed
+    //    or uncertain review falls back to a user confirmation when UI exists.
+    if (lancetReview) {
+      const reviewVerdict = policy.decideReview(aiResult);
+      logger.log(`${this.toolName}: LANCET review verdict=${reviewVerdict ?? "unavailable"} (${label})`);
+      if (reviewVerdict === "allow") {
+        return this.delegate(params, signal, onUpdate, ctx);
+      }
+      if (reviewVerdict === "block") {
+        return this.textError(
+          `Blocked: Smart Approve LLM denied the command\n${subjectLabel}: ${subject}`,
+          { blocked: true, reason: "lancet-llm-block", source: "smart-approve-llm" },
+        );
+      }
+      if (!hasUI) {
+        logger.log(`${this.toolName}: blocked (LANCET review uncertain without UI) — ${label}`);
+        return this.textError(
+          `${t.blockedNoUI(label)}\n${subjectLabel}: ${subject}`,
+          { blocked: true, reason: "lancet-llm-uncertain", source: "unavailable" },
+        );
+      }
+    } else if (autoMode) {
       const decision = policy.decide(aiResult, analysis.denyTier);
       logger.log(`${this.toolName}: auto decision=${decision.verdict} reason=${decision.reason} (${label})`);
       if (decision.verdict === "allow") {

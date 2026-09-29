@@ -18,6 +18,8 @@ export interface PolicyDecision {
   reason: "ai-risk" | "ai-recommend" | "fallback-block" | "fallback-deny-tier" | "fallback-regex";
 }
 
+export type LLMVerdict = "allow" | "block" | "ask";
+
 function normalizeRisk(raw: string | undefined): "low" | "medium" | "high" | null {
   if (typeof raw !== "string") return null;
   const v = raw.trim().toLowerCase();
@@ -64,6 +66,23 @@ export class AutoDecisionPolicy {
     if (recommend === "allow" || risk !== null) return { verdict: "allow", reason: "ai-risk" };
 
     return this.fallback(denyTierHit);
+  }
+
+  /** Resolve a LANCET review handoff into the explicit three-way contract. */
+  decideReview(analysis: RiskAnalysis | null): LLMVerdict | null {
+    if (!analysis) return null;
+
+    const recommend = normalizeRecommend(analysis.recommend);
+    const risk = normalizeRisk(analysis.risk);
+    if (
+      recommend === "deny" ||
+      risk === "high" ||
+      (risk === "medium" && this.config.autoBlockRisk === "medium")
+    ) {
+      return "block";
+    }
+    if (recommend === "allow") return "allow";
+    return "ask";
   }
 
   private fallback(denyTierHit: boolean): PolicyDecision {
