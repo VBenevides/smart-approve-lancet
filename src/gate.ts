@@ -205,7 +205,15 @@ export abstract class ToolGate {
     // 4. LANCET is a second opinion only after Smart Approve's local behavior
     //    detector. A missing/invalid result fails closed; it never falls
     //    through to the existing LLM path as if the model had not run.
-    if (this.usesLancet() && lancet && config.lancet?.enabled !== false) {
+    const lancetEnabled = config.lancet?.enabled === true || (config.lancet === undefined && lancet !== undefined);
+    if (this.usesLancet() && lancetEnabled) {
+      if (!lancet) {
+        logger.log(`${this.toolName}: source=unavailable error=LANCET scorer not configured`);
+        return this.textError(
+          `Blocked: LANCET unavailable (scorer not configured)\n${subjectLabel}: ${subject}`,
+          { blocked: true, reason: "lancet-unavailable", source: "unavailable" },
+        );
+      }
       const inferenceStartedAt = performance.now();
       let verdict: LancetVerdict;
       try {

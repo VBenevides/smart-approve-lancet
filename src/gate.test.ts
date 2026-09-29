@@ -283,6 +283,19 @@ test("bash: persisted LANCET off setting skips an injected scorer", async () => 
   assert.equal(h.calls.analyze, 1);
 });
 
+test("bash: enabled LANCET without a scorer fails closed", async () => {
+  const h = makeHarness({ lancet: { enabled: true } });
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.isError, true);
+  assert.deepEqual(r.details, {
+    blocked: true,
+    reason: "lancet-unavailable",
+    source: "unavailable",
+  });
+  assert.equal(h.calls.analyze, 0);
+  assert.equal(h.calls.delegate, 0);
+});
+
 test("bash: UI status failures do not bypass approval enforcement", async () => {
   const h = makeHarness({}, {
     lancetResult: { classification: "review", score: 0.5, reason: "uncertainty-band" },
