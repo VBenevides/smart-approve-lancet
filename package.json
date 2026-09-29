@@ -37,8 +37,14 @@
       "./dist/index.js"
     ]
   },
+  "dependencies": {
+    "onnxruntime-node": "1.30.0"
+  },
   "devDependencies": {
     "@types/bun": "^1.3.14",
     "typescript": "^7.0.2"
-  }
+  },
+  "trustedDependencies": [
+    "onnxruntime-node"
+  ]
 }
