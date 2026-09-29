@@ -16,6 +16,11 @@ export type ApprovalMode = "interactive" | "auto";
 export type AutoFallback = "regex" | "block";
 export type AutoBlockRisk = "high" | "medium";
 
+export interface LancetConfig {
+  /** Enable local LANCET scoring for behavior-positive Bash commands. */
+  enabled: boolean;
+}
+
 export interface SmartApproveConfig {
   enabled: boolean;
   /** Approval flow: interactive (dialogs) or auto (AI decides, no dialogs). */
@@ -49,6 +54,8 @@ export interface SmartApproveConfig {
    *  or bare id. Default @tiny — the cheapest role, first in the fallback
    *  chain @tiny -> @smol -> @default. */
   model: string;
+  /** Optional local LANCET guard; disabled by default. */
+  lancet?: LancetConfig;
 }
 
 const DEFAULT_CONFIG: SmartApproveConfig = {
@@ -65,6 +72,7 @@ const DEFAULT_CONFIG: SmartApproveConfig = {
   analysisTimeoutMs: 30_000,
   rpcIdleTimeoutMs: 600_000,
   model: "@tiny",
+  lancet: { enabled: false },
 };
 
 /** Deep-merge user config over defaults (arrays replaced, not concatenated). */
@@ -74,6 +82,11 @@ function mergeConfig(user: unknown): SmartApproveConfig {
   const coverage = (
     u.coverage && typeof u.coverage === "object"
       ? u.coverage as Record<string, unknown>
+      : {}
+  );
+  const lancet = (
+    u.lancet && typeof u.lancet === "object"
+      ? u.lancet as Record<string, unknown>
       : {}
   );
   return {
@@ -86,6 +99,9 @@ function mergeConfig(user: unknown): SmartApproveConfig {
       : DEFAULT_CONFIG.autoInHeadless,
     coverage: {
       eval: typeof coverage.eval === "boolean" ? coverage.eval : DEFAULT_CONFIG.coverage.eval,
+    },
+    lancet: {
+      enabled: typeof lancet.enabled === "boolean" ? lancet.enabled : DEFAULT_CONFIG.lancet?.enabled ?? false,
     },
     protectedPaths: Array.isArray(u.protectedPaths) ? u.protectedPaths as string[] : DEFAULT_CONFIG.protectedPaths,
     llmAnalysis: typeof u.llmAnalysis === "boolean" ? u.llmAnalysis : DEFAULT_CONFIG.llmAnalysis,
@@ -113,7 +129,7 @@ export function getConfigDir(): string {
 
 /** Keys that may be changed at runtime (written back to disk on persist). */
 const PERSISTABLE_KEYS: readonly (keyof SmartApproveConfig)[] = [
-  "mode", "autoBlockRisk", "autoFallback", "autoInHeadless", "coverage",
+  "mode", "autoBlockRisk", "autoFallback", "autoInHeadless", "coverage", "lancet",
 ];
 
 /**
@@ -162,9 +178,9 @@ export class ConfigStore {
   }
 
   /** Write dirty runtime changes back to the config file, preserving every
-   *  other user-authored key.  Never throws — persistence is best-effort. */
-  persist(): void {
-    if (this.dirty.size === 0) return;
+   *  other user-authored key. Returns false when persistence fails. */
+  persist(): boolean {
+    if (this.dirty.size === 0) return true;
     try {
       let raw: Record<string, unknown> = {};
       if (fs.existsSync(this.configPath)) {
@@ -177,8 +193,10 @@ export class ConfigStore {
       fs.writeFileSync(this.configPath, JSON.stringify(raw, null, 2), "utf-8");
       this.dirty.clear();
       this.logger?.log(`config persisted: ${this.configPath}`);
+      return true;
     } catch (e) {
       this.logger?.log(`config persist failed: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
     }
   }
 }

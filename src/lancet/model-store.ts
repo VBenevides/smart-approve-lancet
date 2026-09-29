@@ -131,18 +131,20 @@ function unpack(archive: string, directory: string): void {
   }
 }
 
+export interface InstallModelOptions {
+  agentDir?: string;
+  fetchImpl?: ModelFetch;
+  signal?: AbortSignal;
+  onProgress?: (phase: ModelProgress) => void;
+}
+
 /** Download, verify, and atomically install the pinned model. */
 export async function installModel({
   agentDir = agentDirectory(),
   fetchImpl = fetch as unknown as ModelFetch,
   signal,
   onProgress,
-}: {
-  agentDir?: string;
-  fetchImpl?: ModelFetch;
-  signal?: AbortSignal;
-  onProgress?: (phase: ModelProgress) => void;
-} = {}): Promise<InstallResult> {
+}: InstallModelOptions = {}): Promise<InstallResult> {
   const directory = modelDirectory(agentDir);
   if (modelVerified(directory)) return { installed: false, reason: "already-current", directory };
 

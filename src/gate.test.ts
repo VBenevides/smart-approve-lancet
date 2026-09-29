@@ -265,6 +265,17 @@ test("bash: malformed LANCET verdict fails closed", async () => {
   assert.equal(h.calls.delegate, 0);
 });
 
+test("bash: persisted LANCET off setting skips an injected scorer", async () => {
+  const h = makeHarness({ lancet: { enabled: false } }, {
+    lancetResult: { classification: "risky", score: 0.99, reason: null },
+  });
+  h.selectResult = "Allow for this session";
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.content[0].text, "native-run");
+  assert.equal(h.calls.lancet, 0);
+  assert.equal(h.calls.analyze, 1);
+});
+
 test("bash: headless interactive blocks dangerous commands", async () => {
   const h = makeHarness({}, { hasUI: false });
   const r = await run(BashToolGate, h, { command: "git push -f" });

@@ -197,7 +197,7 @@ export abstract class ToolGate {
     // 4. LANCET is a second opinion only after Smart Approve's local behavior
     //    detector. A missing/invalid result fails closed; it never falls
     //    through to the existing LLM path as if the model had not run.
-    if (this.usesLancet() && lancet) {
+    if (this.usesLancet() && lancet && config.lancet?.enabled !== false) {
       let verdict: LancetVerdict;
       try {
         verdict = await lancet.score(subject, "bash", signal);
