@@ -29,6 +29,7 @@ function makeConfig(overrides: Partial<SmartApproveConfig> = {}): SmartApproveCo
     analysisTimeoutMs: 30_000,
     rpcIdleTimeoutMs: 600_000,
     model: "@tiny",
+    lancet: { enabled: false },
     ...overrides,
   };
 }
@@ -65,6 +66,9 @@ function makeHarness(
   opts: HarnessOptions = {},
 ): Harness {
   const config = makeConfig(configOverrides);
+  if ((opts.lancetResult !== undefined || opts.lancetError) && configOverrides.lancet === undefined) {
+    config.lancet = { enabled: true };
+  }
   const calls: Calls = { delegate: 0, analyze: 0, lancet: 0, notify: [], logs: [], session: [], permanent: [] };
   const harness: Harness = {
     deps: {
@@ -198,6 +202,49 @@ test("bash: no behavior skips LANCET", async () => {
   const r = await run(BashToolGate, h, { command: "ls -la" });
   assert.equal(r.content[0].text, "native-run");
   assert.equal(h.calls.lancet, 0);
+});
+
+test("bash: disabled LANCET preserves every native review outcome", async () => {
+  const hard = makeHarness({ lancet: { enabled: false } }, {
+    isAllowed: true,
+    lancetResult: { classification: "risky", score: 0.99, reason: null },
+  });
+  const hardResult = await run(BashToolGate, hard, { command: "rm -rf /" });
+  assert.equal(hardResult.isError, true);
+  assert.equal(hard.calls.lancet, 0);
+
+  const allowed = makeHarness({ lancet: { enabled: false } }, {
+    isAllowed: true,
+    lancetResult: { classification: "risky", score: 0.99, reason: null },
+  });
+  const allowedResult = await run(BashToolGate, allowed, { command: "git push -f origin feature" });
+  assert.equal(allowedResult.content[0].text, "native-run");
+  assert.equal(allowed.calls.lancet, 0);
+
+  const safe = makeHarness({ lancet: { enabled: false } }, {
+    lancetResult: { classification: "risky", score: 0.99, reason: null },
+  });
+  const safeResult = await run(BashToolGate, safe, { command: "ls -la" });
+  assert.equal(safeResult.content[0].text, "native-run");
+  assert.equal(safe.calls.lancet, 0);
+
+  const headless = makeHarness({ lancet: { enabled: false } }, {
+    hasUI: false,
+    lancetResult: { classification: "not_flagged", score: 0.01, reason: null },
+  });
+  const headlessResult = await run(BashToolGate, headless, { command: "git push -f" });
+  assert.equal(headlessResult.isError, true);
+  assert.deepEqual(headlessResult.details, { blocked: true, reason: "no-ui" });
+  assert.equal(headless.calls.lancet, 0);
+
+  const review = makeHarness({ lancet: { enabled: false } }, {
+    lancetResult: { classification: "risky", score: 0.99, reason: null },
+  });
+  review.selectResult = "Allow for this session";
+  const reviewResult = await run(BashToolGate, review, { command: "git push -f" });
+  assert.equal(reviewResult.content[0].text, "native-run");
+  assert.equal(review.calls.analyze, 1);
+  assert.equal(review.calls.lancet, 0);
 });
 
 test("bash: LANCET not_flagged delegates without LLM analysis", async () => {
