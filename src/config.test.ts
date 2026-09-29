@@ -106,6 +106,9 @@ describe("LANCET lifecycle commands", () => {
     });
     const notices: string[] = [];
     const ctx = context(notices);
+    ctx.ui.setStatus = () => {
+      throw new Error("status unavailable");
+    };
 
     await handler.handle("off", ctx);
     assert.equal(store.config.lancet?.enabled, false);

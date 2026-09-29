@@ -172,7 +172,15 @@ export class LancetCommandHandler {
   }
 
   private notify(ctx: ExtensionCtx, message: string, level: "info" | "warning"): void {
-    ctx.ui.notify?.(message, level);
-    ctx.ui.setStatus("lancet-guard", this.deps.configStore.config.lancet?.enabled ? "on" : "off");
+    try {
+      ctx.ui.notify?.(message, level);
+    } catch (error) {
+      this.deps.logger.log(`lancet UI notification failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      ctx.ui.setStatus("lancet-guard", this.deps.configStore.config.lancet?.enabled ? "on" : "off");
+    } catch (error) {
+      this.deps.logger.log(`lancet UI status failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }

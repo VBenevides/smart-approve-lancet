@@ -38,6 +38,7 @@ interface Calls {
   analyze: number;
   lancet: number;
   notify: string[];
+  logs: string[];
   session: string[];
   permanent: string[];
 }
@@ -64,7 +65,7 @@ function makeHarness(
   opts: HarnessOptions = {},
 ): Harness {
   const config = makeConfig(configOverrides);
-  const calls: Calls = { delegate: 0, analyze: 0, lancet: 0, notify: [], session: [], permanent: [] };
+  const calls: Calls = { delegate: 0, analyze: 0, lancet: 0, notify: [], logs: [], session: [], permanent: [] };
   const harness: Harness = {
     deps: {
       config,
@@ -90,7 +91,7 @@ function makeHarness(
         },
       },
       policy: new AutoDecisionPolicy(config),
-      logger: { log: () => undefined },
+      logger: { log: (message: string) => calls.logs.push(message) },
       lang: "en" as Lang,
       t: getI18n("en"),
     },
@@ -173,6 +174,7 @@ test("bash: hard-block wins over everything", async () => {
   assert.equal(h.calls.delegate, 0);
   assert.equal(h.calls.analyze, 0);
   assert.equal(h.calls.lancet, 0);
+  assert.ok(h.calls.logs.some((message) => message.includes("source=rules")));
 });
 
 test("bash: allowlist hit delegates without dialog", async () => {
@@ -185,6 +187,7 @@ test("bash: allowlist hit delegates without dialog", async () => {
   assert.equal(h.calls.delegate, 1);
   assert.equal(h.calls.analyze, 0);
   assert.equal(h.calls.lancet, 0);
+  assert.ok(h.calls.logs.some((message) => message.includes("source=allowlist")));
   assert.equal(h.selectChoices, null);
 });
 
@@ -235,6 +238,9 @@ test("bash: LANCET review continues through the existing approval path", async (
   assert.equal(h.calls.lancet, 1);
   assert.equal(h.calls.analyze, 1);
   assert.equal(h.calls.delegate, 1);
+  assert.ok(h.calls.logs.some((message) => /source=lancet classification=review .*latencyMs=\d+\.\d/u.test(message)));
+  assert.ok(h.calls.notify.some((message) => message.includes("Review handoff")));
+  assert.ok(h.calls.logs.every((message) => message.length < 400));
 });
 
 test("bash: LANCET failure blocks instead of falling through", async () => {
@@ -244,7 +250,7 @@ test("bash: LANCET failure blocks instead of falling through", async () => {
   assert.deepEqual(r.details, {
     blocked: true,
     reason: "lancet-unavailable",
-    source: "lancet",
+    source: "unavailable",
   });
   assert.match(r.content[0].text, /model unavailable/);
   assert.equal(h.calls.delegate, 0);
@@ -260,9 +266,10 @@ test("bash: malformed LANCET verdict fails closed", async () => {
   assert.deepEqual(r.details, {
     blocked: true,
     reason: "lancet-invalid",
-    source: "lancet",
+    source: "unavailable",
   });
   assert.equal(h.calls.delegate, 0);
+  assert.ok(h.calls.logs.some((message) => message.includes("classification=invalid score=n/a")));
 });
 
 test("bash: persisted LANCET off setting skips an injected scorer", async () => {
@@ -274,6 +281,20 @@ test("bash: persisted LANCET off setting skips an injected scorer", async () => 
   assert.equal(r.content[0].text, "native-run");
   assert.equal(h.calls.lancet, 0);
   assert.equal(h.calls.analyze, 1);
+});
+
+test("bash: UI status failures do not bypass approval enforcement", async () => {
+  const h = makeHarness({}, {
+    lancetResult: { classification: "review", score: 0.5, reason: "uncertainty-band" },
+  });
+  h.selectResult = "Allow for this session";
+  h.ctx.ui.setStatus = () => {
+    throw new Error("status unavailable");
+  };
+  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  assert.equal(r.content[0].text, "native-run");
+  assert.equal(h.calls.delegate, 1);
+  assert.ok(h.calls.logs.some((message) => message.includes("UI status failed")));
 });
 
 test("bash: headless interactive blocks dangerous commands", async () => {

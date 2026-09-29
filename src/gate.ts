@@ -84,6 +84,14 @@ export interface GateDeps {
 export type ToolUpdateCallback =
   ((update: { content: unknown[]; details?: unknown }) => void) | undefined;
 
+function scoreText(score: unknown): string {
+  return typeof score === "number" && Number.isFinite(score) ? score.toFixed(4) : "n/a";
+}
+
+function logText(value: unknown): string {
+  return String(value).replace(/\s+/gu, " ").slice(0, 160);
+}
+
 export abstract class ToolGate {
   // Public so concrete gates can be constructed by the orchestrator and
   // tests; the class is abstract, so it cannot be instantiated directly.
@@ -179,13 +187,13 @@ export abstract class ToolGate {
     // 1. Hard-block wins over the allowlist (entries can predate a rule
     //    upgrade or be hand-edited into the allow file).
     if (analysis.hardBlocked) {
-      logger.log(`${this.toolName}: hard-blocked (${label})`);
+      logger.log(`${this.toolName}: source=rules hard-blocked (${label})`);
       return this.textError(`Blocked: ${label}\n${subjectLabel}: ${subject}`, { blocked: true, reason: label });
     }
 
     // 2. Allowlist hit → delegate directly.
     if (config.rememberDecisions && allowList.isAllowed(this.toolName, this.buildKey(subject), effectiveCwd)) {
-      logger.log(`${this.toolName}: allowlist hit, delegating to native`);
+      logger.log(`${this.toolName}: source=allowlist, delegating to native`);
       return this.delegate(params, signal, onUpdate, ctx);
     }
 
@@ -198,18 +206,26 @@ export abstract class ToolGate {
     //    detector. A missing/invalid result fails closed; it never falls
     //    through to the existing LLM path as if the model had not run.
     if (this.usesLancet() && lancet && config.lancet?.enabled !== false) {
+      const inferenceStartedAt = performance.now();
       let verdict: LancetVerdict;
       try {
         verdict = await lancet.score(subject, "bash", signal);
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        logger.log(`${this.toolName}: LANCET unavailable — ${message}`);
+        logger.log(
+          `${this.toolName}: source=unavailable latencyMs=${(performance.now() - inferenceStartedAt).toFixed(1)} error=${logText(message)}`,
+        );
         return this.textError(
           `Blocked: LANCET unavailable (${message})\n${subjectLabel}: ${subject}`,
-          { blocked: true, reason: "lancet-unavailable", source: "lancet" },
+          { blocked: true, reason: "lancet-unavailable", source: "unavailable" },
         );
       }
 
+      const latencyMs = (performance.now() - inferenceStartedAt).toFixed(1);
+      const score = scoreText(verdict?.score);
+      const reason = typeof verdict?.reason === "string" && verdict.reason
+        ? logText(verdict.reason)
+        : "none";
       if (
         !verdict ||
         (verdict.classification !== "not_flagged" &&
@@ -218,22 +234,25 @@ export abstract class ToolGate {
         typeof verdict.score !== "number" ||
         !Number.isFinite(verdict.score)
       ) {
-        logger.log(`${this.toolName}: LANCET returned an invalid verdict`);
+        logger.log(
+          `${this.toolName}: source=unavailable classification=invalid score=${score} reason=${reason} latencyMs=${latencyMs}`,
+        );
         return this.textError(
           `Blocked: LANCET returned an invalid verdict\n${subjectLabel}: ${subject}`,
-          { blocked: true, reason: "lancet-invalid", source: "lancet" },
+          { blocked: true, reason: "lancet-invalid", source: "unavailable" },
         );
       }
 
+      logger.log(
+        `${this.toolName}: source=lancet classification=${verdict.classification} score=${score} reason=${reason} latencyMs=${latencyMs}`,
+      );
       if (verdict.classification === "not_flagged") {
-        logger.log(`${this.toolName}: LANCET not_flagged, delegating to native`);
         return this.delegate(params, signal, onUpdate, ctx);
       }
 
       if (verdict.classification === "risky") {
-        logger.log(`${this.toolName}: LANCET risky (${verdict.score})`);
         return this.textError(
-          `Blocked: LANCET flagged the command as risky\n${subjectLabel}: ${subject}`,
+          `Blocked: LANCET flagged the command as risky (score=${score})\n${subjectLabel}: ${subject}`,
           {
             blocked: true,
             reason: "lancet-risky",
@@ -243,8 +262,10 @@ export abstract class ToolGate {
         );
       }
 
-      logger.log(
-        `${this.toolName}: LANCET review (${verdict.score})${verdict.reason ? ` reason=${verdict.reason}` : ""}`,
+      this.safeNotify(
+        ctx,
+        `[lancet-guard] Review handoff: Smart Approve approval required (score=${score}${verdict.reason ? `, reason=${logText(verdict.reason)}` : ""}).`,
+        "info",
       );
     }
 
@@ -261,7 +282,7 @@ export abstract class ToolGate {
     let aiResult: RiskAnalysis | null = null;
     let analysisText: string | null = null;
     if (config.llmAnalysis) {
-      ctx.ui.setStatus("smart-approve", t.analyzing);
+      this.safeStatus(ctx, "smart-approve", t.analyzing);
       try {
         const sessionCtx = contextGatherer.gather(ctx, config.contextMaxChars);
         const contextSection = contextGatherer.format(sessionCtx, t);
@@ -275,7 +296,7 @@ export abstract class ToolGate {
       } catch (e) {
         logger.log(`${this.toolName}: LLM analysis failed: ${e instanceof Error ? e.message : String(e)}`);
       } finally {
-        ctx.ui.setStatus("smart-approve", undefined);
+        this.safeStatus(ctx, "smart-approve", undefined);
       }
     }
 
@@ -290,10 +311,10 @@ export abstract class ToolGate {
       const decision = policy.decide(aiResult, analysis.denyTier);
       logger.log(`${this.toolName}: auto decision=${decision.verdict} reason=${decision.reason} (${label})`);
       if (decision.verdict === "allow") {
-        ctx.ui.notify?.(t.autoAllowed(label), "info");
+        this.safeNotify(ctx, t.autoAllowed(label), "info");
         return this.delegate(params, signal, onUpdate, ctx);
       }
-      ctx.ui.notify?.(t.autoBlocked(label), "warning");
+      this.safeNotify(ctx, t.autoBlocked(label), "warning");
       return this.textError(`${t.autoBlocked(label)}\n${subjectLabel}: ${subject}`, { blocked: true, reason: "auto" });
     }
 
@@ -323,6 +344,22 @@ export abstract class ToolGate {
     // 7. Execute — delegate to the native tool.
     logger.log(`${this.toolName}: approved, delegating to native`);
     return this.delegate(params, signal, onUpdate, ctx);
+  }
+
+  private safeStatus(ctx: ExtensionCtx, id: string, text: string | undefined): void {
+    try {
+      ctx.ui.setStatus(id, text);
+    } catch (error) {
+      this.deps.logger.log(`${this.toolName}: UI status failed — ${logText(error instanceof Error ? error.message : error)}`);
+    }
+  }
+
+  private safeNotify(ctx: ExtensionCtx, message: string, level: "info" | "warning"): void {
+    try {
+      ctx.ui.notify?.(message, level);
+    } catch (error) {
+      this.deps.logger.log(`${this.toolName}: UI notification failed — ${logText(error instanceof Error ? error.message : error)}`);
+    }
   }
 
   private textError(text: string, details: Record<string, unknown>): AgentToolResult {
