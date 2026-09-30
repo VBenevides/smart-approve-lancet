@@ -340,12 +340,13 @@ test("bash: LANCET review cannot bypass allowlist before LLM allow", async () =>
   assert.equal(h.selectChoices, null);
 });
 
-test("bash: LANCET review LLM block wins over delegation", async () => {
-  const h = makeHarness({}, {
+test("bash: LANCET review LLM block wins over delegation in auto mode", async () => {
+  const h = makeHarness({ mode: "auto", autoInHeadless: true }, {
+    hasUI: false,
     analyzeResult: { risk: "low", recommend: "deny" },
     lancetResult: { classification: "review", score: 0.5, reason: null },
   });
-  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  const r = await run(BashToolGate, h, { command: "ouro init --root /home/wdtg/Projects/Ouro" });
   assert.equal(r.isError, true);
   assert.deepEqual(r.details, {
     blocked: true,
@@ -357,13 +358,13 @@ test("bash: LANCET review LLM block wins over delegation", async () => {
   assert.equal(h.selectChoices, null);
 });
 
-test("bash: failed LANCET review asks in an interactive session", async () => {
+test("bash: interactive approval overrides an LLM denial after LANCET review", async () => {
   const h = makeHarness({}, {
-    analyzeResult: null,
-    lancetResult: { classification: "review", score: 0.5, reason: null },
+    analyzeResult: { risk: "high", recommend: "deny" },
+    lancetResult: { classification: "review", score: 0.5, reason: "uncertainty-band" },
   });
   h.selectResult = "Allow for this session";
-  const r = await run(BashToolGate, h, { command: "git push -f origin feature" });
+  const r = await run(BashToolGate, h, { command: "ouro init --root /home/wdtg/Projects/Ouro" });
   assert.equal(r.content[0].text, "native-run");
   assert.equal(h.calls.analyze, 1);
   assert.equal(h.calls.delegate, 1);

@@ -328,10 +328,13 @@ export abstract class ToolGate {
         return this.delegate(params, signal, onUpdate, ctx);
       }
       if (reviewVerdict === "block") {
-        return this.textError(
-          `Blocked: Smart Approve LLM denied the command\n${subjectLabel}: ${subject}`,
-          { blocked: true, reason: "lancet-llm-block", source: "smart-approve-llm" },
-        );
+        if (autoMode) {
+          return this.textError(
+            `Blocked: Smart Approve LLM denied the command\n${subjectLabel}: ${subject}`,
+            { blocked: true, reason: "lancet-llm-block", source: "smart-approve-llm" },
+          );
+        }
+        logger.log(`${this.toolName}: interactive approval required after LLM denial (${label})`);
       }
       if (!hasUI) {
         logger.log(`${this.toolName}: blocked (LANCET review uncertain without UI) — ${label}`);
