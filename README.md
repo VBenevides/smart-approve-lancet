@@ -106,6 +106,8 @@ The integration targets the local **SpecPi LANCET Nano v0.4.2 CPU INT8 model**, 
 
 LANCET actions now live under `/smart-approve lancet`; the separate slash command is removed. The model storage directory is unchanged.
 
+To verify the full nested lifecycle against an already installed official model, run `LANCET_MODEL_DIRECTORY="$HOME/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.2" bun test --timeout 120000 src/index.test.ts`. The integration test copies the model into isolated temporary homes, checks both approval modes, and verifies that `check` scores without executing its shell payload.
+
 `setup` downloads the pinned HTTPS GitHub release archive to a private staging directory, verifies the archive and all three required model files, and atomically installs them under the existing agent directory:
 
 ```text
