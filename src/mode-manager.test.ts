@@ -86,3 +86,20 @@ test("combined status identifies approval mode and LANCET state", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("approval mode changes preserve enabled LANCET across persistence", () => {
+  const dir = tempDir();
+  try {
+    const { store, manager } = makeManager(dir);
+    store.update({ lancet: { enabled: true } });
+    manager.set("auto");
+    assert.equal(store.config.lancet?.enabled, true);
+    assert.equal(new ConfigStore(silentLogger, dir).config.lancet?.enabled, true);
+    manager.toggle();
+    const restored = new ConfigStore(silentLogger, dir);
+    assert.equal(restored.config.mode, "interactive");
+    assert.equal(restored.config.lancet?.enabled, true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
