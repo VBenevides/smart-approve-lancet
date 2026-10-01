@@ -78,10 +78,14 @@ test("status block reports mode and coverage", () => {
 test("combined status identifies approval mode and LANCET state", () => {
   const dir = tempDir();
   try {
-    const { store } = makeManager(dir);
-    assert.equal(approvalStatus(store.config), "smart-approve interactive - lancet off");
-    store.update({ lancet: { enabled: true } });
-    assert.equal(approvalStatus(store.config), "smart-approve interactive - lancet on");
+    const { store, manager } = makeManager(dir);
+    for (const mode of ["interactive", "auto"] as const) {
+      manager.set(mode);
+      for (const enabled of [false, true]) {
+        store.update({ lancet: { enabled } });
+        assert.equal(approvalStatus(store.config), `smart-approve ${mode} - lancet ${enabled ? "on" : "off"}`);
+      }
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
