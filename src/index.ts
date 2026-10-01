@@ -90,6 +90,11 @@ class SmartApprove {
   register(): void {
     this.pi.registerCommand("smart-approve", {
       description: "Switch approval mode or manage LANCET (lancet setup|on|off|check)",
+      getArgumentCompletions: (prefix) => {
+        const values = ["auto", "interactive", "status", "lancet", "lancet setup", "lancet on", "lancet off", "lancet check", "lancet status"];
+        const matches = values.filter((value) => value.startsWith(prefix.toLowerCase()));
+        return matches.length ? matches.map((value) => ({ value, label: value })) : null;
+      },
       handler: async (args: unknown, ctx: ExtensionCtx) => {
         await this.handleCommand(args, ctx);
       },

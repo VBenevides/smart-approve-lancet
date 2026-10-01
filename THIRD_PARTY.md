@@ -9,6 +9,6 @@ Smart Approve remains MIT-licensed. The local LANCET integration adapts the foll
 
 ## Network and artifact boundary
 
-`/smart-approve-lancet setup` is the only Smart Approve path that downloads a model. It fetches the one HTTPS GitHub release URL pinned in `src/lancet/model-manifest.ts`, verifies the archive size and SHA-256 digest, verifies all three extracted files again, and atomically installs the complete model directory. Package installation and inference do not contact a hosted classifier or Jev service.
+`/smart-approve lancet setup` is the only Smart Approve path that downloads a model. It fetches the one HTTPS GitHub release URL pinned in `src/lancet/model-manifest.ts`, verifies the archive size and SHA-256 digest, verifies all three extracted files again, and atomically installs the complete model directory. Package installation and inference do not contact a hosted classifier or Jev service.
 
 The npm package contains the bundled extension and this notice. It does not contain the roughly 100 MB release ZIP, the roughly 111 MB ONNX file, tokenizer data, or model metadata files. Users who install the model must follow the licenses and notices shipped by the official LANCET release.

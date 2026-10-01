@@ -114,7 +114,7 @@ export class LancetCommandHandler {
 
   private enable(ctx: ExtensionCtx): void {
     if (!modelVerified(this.directory)) {
-      const message = "[Smart Approve LANCET] Cannot enable: the pinned v0.4.2 model is not verified. Run /smart-approve-lancet setup first.";
+      const message = "[Smart Approve LANCET] Cannot enable: the pinned v0.4.2 model is not verified. Run /smart-approve lancet setup first.";
       this.deps.logger.log("lancet enable refused: model is not verified");
       this.notify(ctx, message, "warning");
       return;
@@ -152,7 +152,7 @@ export class LancetCommandHandler {
 
   private async check(command: string, ctx: ExtensionCtx): Promise<void> {
     if (!command) {
-      this.notify(ctx, "Usage: /smart-approve-lancet check <command>", "warning");
+      this.notify(ctx, "Usage: /smart-approve lancet check <command>", "warning");
       return;
     }
 
@@ -174,7 +174,7 @@ export class LancetCommandHandler {
   }
 
   private help(): string {
-    return "Usage: /smart-approve-lancet status | setup | on | off | check <command>";
+    return "Usage: /smart-approve lancet status | setup | on | off | check <command>";
   }
 
   private notify(ctx: ExtensionCtx, message: string, level: "info" | "warning"): void {

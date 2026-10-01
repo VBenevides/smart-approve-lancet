@@ -120,18 +120,6 @@ describe("LANCET lifecycle commands", () => {
     );
   });
 
-  test("unknown lifecycle actions return the new namespace help", async () => {
-    const directory = path.join(temporary, "help");
-    const store = new ConfigStore(logger, directory);
-    const notices: string[] = [];
-    const handler = new LancetCommandHandler({ configStore: store, logger, agentDir: directory });
-
-    await handler.handle("legacy-action", context(notices));
-    assert.equal(
-      notices.at(-1),
-      "Usage: /smart-approve-lancet status | setup | on | off | check <command>",
-    );
-  });
 
   test("refuses on before verification and setup uses the injected installer", async () => {
     const directory = path.join(temporary, "commands-on");

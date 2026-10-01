@@ -115,7 +115,7 @@ LANCET actions now live under `/smart-approve lancet`; the separate slash comman
 └── model.json
 ```
 
-The archive is not downloaded during package installation, session startup, `on`, `off`, or inference. Inference loads lazily on the first eligible Bash command, uses the CPU execution provider from the exact `onnxruntime-node` `1.30.0` dependency, and caches one classifier per model directory until `/smart-approve-lancet off` or session end releases it. The release archive is about 100 MB and the ONNX file is about 111 MB; resident memory and score latency depend on the host CPU and ONNX Runtime.
+The archive is not downloaded during package installation, session startup, `on`, `off`, or inference. Inference loads lazily on the first eligible Bash command, uses the CPU execution provider from the exact `onnxruntime-node` `1.30.0` dependency, and caches one classifier per model directory until `/smart-approve lancet off` or session end releases it. The release archive is about 100 MB and the ONNX file is about 111 MB; resident memory and score latency depend on the host CPU and ONNX Runtime.
 
 Add or persist the setting explicitly if needed:
 
@@ -127,7 +127,7 @@ Add or persist the setting explicitly if needed:
 }
 ```
 
-When enabled, model load or inference failure blocks the eligible Bash command and reports `/smart-approve-lancet setup` remediation. `/smart-approve-lancet off` persists immediately and restores the existing Smart Approve path.
+When enabled, model load or inference failure blocks the eligible Bash command and reports `/smart-approve lancet setup` remediation. `/smart-approve lancet off` persists immediately and restores the existing Smart Approve path.
 
 ## Architecture
 
@@ -283,7 +283,7 @@ tools:
 
 The custom "bash"/"eval" tools shadow the built-ins by name — no `bash.enabled` change is needed. Restart the host after installing or editing.
 
-Run `/smart-approve-lancet setup` after installation if you want the optional local model. The package does not download model data automatically.
+Run `/smart-approve lancet setup` after installation if you want the optional local model. The package does not download model data automatically.
 
 ## Configuration
 
@@ -359,8 +359,7 @@ Session allows are in-memory only, cleared on restart. You can edit or delete th
 | `child_process.spawn(hostBin, ["--mode", "rpc", ...])` | Persistent RPC child for LLM risk analysis |
 | `pi.on("tool_call", handler)` | hub launch gating + write/edit protected-path interception |
 | `pi.on("session_start" / "session_shutdown")` | Status chips / RPC and LANCET classifier cleanup |
-| `pi.registerCommand("smart-approve", …)` | Runtime mode switching + status |
-| `pi.registerCommand("smart-approve-lancet", …)` | LANCET status, setup, toggle, and non-executing check |
+| `pi.registerCommand("smart-approve", …)` | Runtime mode switching, status, and nested LANCET lifecycle actions with argument completion |
 | `ctx.hasUI` | Detect headless/subagent context |
 | `ctx.sessionManager.getBranch()` / `getEntries()` | Gather session context for LLM review |
 | `ctx.ui.setStatus / notify / confirm / select` | Status, notifications, dialogs |

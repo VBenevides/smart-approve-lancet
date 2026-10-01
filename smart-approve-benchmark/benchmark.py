@@ -592,7 +592,7 @@ class JsonlBridge:
                 if not source_root.is_dir():
                     raise RuntimeError(
                         f"LANCET model root not found: {source_root}. "
-                        "Run /smart-approve-lancet setup or pass --lancet-model-root."
+                        "Run /smart-approve lancet setup or pass --lancet-model-root."
                     )
                 (agent_dir / "smart-approve-lancet").symlink_to(source_root, target_is_directory=True)
 
