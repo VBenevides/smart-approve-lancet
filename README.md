@@ -97,12 +97,14 @@ The integration targets the local **SpecPi LANCET Nano v0.4.2 CPU INT8 model**, 
 ### Setup and lifecycle
 
 ```text
-/smart-approve-lancet status       # model lifecycle and enabled-state status; no network
-/smart-approve-lancet setup        # the only network-using path
-/smart-approve-lancet on           # enable only after checksum verification
-/smart-approve-lancet off          # immediate escape hatch; disables Bash scoring
-/smart-approve-lancet check <command> # score for inspection; never executes it
+/smart-approve lancet status       # model lifecycle and enabled-state status; no network
+/smart-approve lancet setup        # the only network-using path
+/smart-approve lancet on           # enable only after checksum verification
+/smart-approve lancet off          # immediate escape hatch; disables Bash scoring
+/smart-approve lancet check <command> # score for inspection; never executes it
 ```
+
+LANCET actions now live under `/smart-approve lancet`; the separate slash command is removed. The model storage directory is unchanged.
 
 `setup` downloads the pinned HTTPS GitHub release archive to a private staging directory, verifies the archive and all three required model files, and atomically installs them under the existing agent directory:
 

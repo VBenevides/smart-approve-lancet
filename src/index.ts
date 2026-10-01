@@ -36,19 +36,6 @@ import { LancetCommandHandler } from "./lancet/commands.ts";
 import { createLancetScorer, releaseClassifier } from "./lancet/runtime.ts";
 import { modelDirectory } from "./lancet/model-store.ts";
 
-export const LANCET_COMMAND_NAME = "smart-approve-lancet";
-
-type LancetCommandHandlerFunction = (args: unknown, ctx: ExtensionCtx) => void | Promise<void>;
-
-export function registerLancetCommand(
-  pi: Pick<ExtensionAPI, "registerCommand">,
-  handler: LancetCommandHandlerFunction,
-): void {
-  pi.registerCommand(LANCET_COMMAND_NAME, {
-    description: "Inspect, install, enable, disable, or check Smart Approve LANCET",
-    handler,
-  });
-}
 
 /**
  * Smart Approve extension orchestrator.
@@ -101,8 +88,11 @@ class SmartApprove {
 
   /** Register the shadowed tools, event hooks and slash command. */
   register(): void {
-    registerLancetCommand(this.pi, async (args: unknown, ctx: ExtensionCtx) => {
-      await this.lancetCommands.handle(args, ctx);
+    this.pi.registerCommand("smart-approve", {
+      description: "Switch approval mode or manage LANCET (lancet setup|on|off|check)",
+      handler: async (args: unknown, ctx: ExtensionCtx) => {
+        await this.handleCommand(args, ctx);
+      },
     });
 
     this.pi.on("session_shutdown", async () => {
@@ -152,20 +142,19 @@ class SmartApprove {
       ctx.ui.setStatus("smart-approve", approvalStatus(this.configStore.config));
     });
 
-    // Runtime mode switching via slash command.
-    this.pi.registerCommand("smart-approve", {
-      description: "Toggle or inspect smart-approve mode (auto/interactive)",
-      handler: async (args: unknown, ctx: ExtensionCtx) => {
-        this.handleCommand(args, ctx);
-      },
-    });
 
   }
 
-  // ── slash command: /smart-approve [auto|interactive|status] ────────
+  // ── slash command: /smart-approve [auto|interactive|status|lancet …] ──
 
-  private handleCommand(args: unknown, ctx: ExtensionCtx): void {
-    const arg = String(args ?? "").trim().toLowerCase();
+  private async handleCommand(args: unknown, ctx: ExtensionCtx): Promise<void> {
+    const raw = String(args ?? "").trim();
+    const match = /^lancet(?:\s+([\s\S]*))?$/iu.exec(raw);
+    if (match) {
+      await this.lancetCommands.handle(match[1] ?? "", ctx);
+      return;
+    }
+    const arg = raw.toLowerCase();
     if (arg === "") {
       const next = this.modeManager.toggle();
       ctx.ui.notify?.(this.t.modeSwitched(next), "info");
