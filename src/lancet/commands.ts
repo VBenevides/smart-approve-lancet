@@ -2,6 +2,7 @@ import type { ExtensionCtx } from "../types.ts";
 import type { LoggerLike } from "../logger.ts";
 import type { LancetResult } from "./classifier.ts";
 import type { SmartApproveConfig } from "../config.ts";
+import { approvalStatus } from "../mode-manager.ts";
 import {
   installModel as installPinnedModel,
   modelDirectory,
@@ -183,7 +184,7 @@ export class LancetCommandHandler {
       this.deps.logger.log(`lancet UI notification failed: ${error instanceof Error ? error.message : String(error)}`);
     }
     try {
-      ctx.ui.setStatus("smart-approve-lancet", this.deps.configStore.config.lancet?.enabled ? "on" : "off");
+      ctx.ui.setStatus("smart-approve", approvalStatus(this.deps.configStore.config));
     } catch (error) {
       this.deps.logger.log(`lancet UI status failed: ${error instanceof Error ? error.message : String(error)}`);
     }

@@ -27,7 +27,7 @@ import { AllowList } from "./allowlist";
 import { SessionContextGatherer } from "./context";
 import { HostResolver, ModelInvoker } from "./host";
 import { AutoDecisionPolicy } from "./policy";
-import { ModeManager } from "./mode-manager";
+import { approvalStatus, ModeManager } from "./mode-manager";
 import { BashToolGate } from "./bash-tool";
 import { EvalToolGate } from "./eval-tool";
 import { HubLaunchGuard } from "./hub-guard.ts";
@@ -149,8 +149,7 @@ class SmartApprove {
 
     // Persistent mode chip in the TUI status bar.
     this.pi.on("session_start", async (_event, ctx: ExtensionCtx) => {
-      ctx.ui.setStatus("smart-approve-mode", this.configStore.config.mode);
-      ctx.ui.setStatus("smart-approve-lancet", this.configStore.config.lancet?.enabled ? "on" : "off");
+      ctx.ui.setStatus("smart-approve", approvalStatus(this.configStore.config));
     });
 
     // Runtime mode switching via slash command.
@@ -178,7 +177,7 @@ class SmartApprove {
     } else {
       ctx.ui.notify?.(this.t.cmdHelp, "info");
     }
-    ctx.ui.setStatus("smart-approve-mode", this.configStore.config.mode);
+    ctx.ui.setStatus("smart-approve", approvalStatus(this.configStore.config));
   }
 
   // ── hub launch interception (regex gate, no LLM) ───────────────────

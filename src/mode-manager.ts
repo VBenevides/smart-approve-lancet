@@ -11,6 +11,11 @@ import type { ConfigStore } from "./config";
 import type { ApprovalMode } from "./config";
 import type { LoggerLike } from "./logger";
 
+/** Current approval mode and independent local scoring state. */
+export function approvalStatus(config: ConfigStore["config"]): string {
+  return `smart-approve ${config.mode} - lancet ${config.lancet?.enabled ? "on" : "off"}`;
+}
+
 /** Coverage summary shown by the status command. */
 export interface CoverageSummary {
   eval: boolean;

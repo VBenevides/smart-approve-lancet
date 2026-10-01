@@ -61,6 +61,8 @@ Two approval modes:
 | `interactive` (default) | LLM analysis shown in a dialog; you choose session-allow / permanent-allow / deny |
 | `auto` | LLM verdict decides: block or execute; no dialogs (non-blocking notifications only) |
 
+The status bar displays both current values in one chip: `smart-approve interactive - lancet off`, for example. Approval mode (`auto`/`interactive`) and LANCET scoring (`off`/`on`) are independent; changing either refreshes the combined status.
+
 Switch at runtime from the TUI (or RPC client) — no restart needed, and the choice persists:
 
 ```
