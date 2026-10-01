@@ -188,4 +188,28 @@ describe("LANCET lifecycle commands", () => {
     assert.match(notices.at(-1) ?? "", /risky, score=0\.9900/u);
     assert.ok((notices.at(-1) ?? "").length < 180);
   });
+
+  test("setup failure and empty check remain observable without changing configuration", async () => {
+    const directory = path.join(temporary, "commands-failure");
+    const store = new ConfigStore(logger, directory);
+    store.update({ mode: "auto", lancet: { enabled: true } });
+    store.persist();
+    const before = fs.readFileSync(store.configPath, "utf8");
+    const notices: string[] = [];
+    const logs: string[] = [];
+    const handler = new LancetCommandHandler({
+      configStore: store,
+      logger: { log: (message) => logs.push(message) },
+      agentDir: directory,
+      installModel: async () => { throw new Error("download refused"); },
+    });
+    await handler.handle("setup", context(notices));
+    assert.match(notices.at(-1) ?? "", /download refused/u);
+    assert.ok(logs.some((message) => message.includes("download refused")));
+    await handler.handle("check", context(notices));
+    assert.match(notices.at(-1) ?? "", /check <command>/u);
+    assert.equal(fs.readFileSync(store.configPath, "utf8"), before);
+    assert.equal(store.config.mode, "auto");
+    assert.equal(store.config.lancet?.enabled, true);
+  });
 });
