@@ -63,6 +63,8 @@ Two approval modes:
 
 The status bar displays both current values in one chip: `smart-approve interactive - lancet off`, for example. Approval mode (`auto`/`interactive`) and LANCET scoring (`off`/`on`) are independent; changing either refreshes the combined status.
 
+The persistent chip replaces the previous mode line and clears the previous LANCET-only line; temporary analysis messages use a separate slot. Restart OMP after updating the extension so the new status handler replaces the loaded one.
+
 Switch at runtime from the TUI (or RPC client) — no restart needed, and the choice persists:
 
 ```
@@ -268,7 +270,7 @@ To build and install the current checkout locally:
 ./local/install-locally.sh
 ```
 
-The script performs a production build, bundles the ONNX Runtime JavaScript loader, installs its CPU runtime dependencies and native bindings beside the extension, places the package under `~/.omp/agent/node_modules/smart-approve`, and idempotently registers its absolute extension path in `~/.omp/agent/config.yml`.
+The script performs a production build, bundles the ONNX Runtime JavaScript loader, installs its CPU runtime dependencies and native bindings beside the extension, places the package under `~/.omp/agent/node_modules/smart-approve`, and idempotently registers its absolute extension path in `~/.omp/agent/config.yml`. An existing equivalent `~/…` path is reused rather than registered a second time.
 
 Then configure OMP to load the extension:
 

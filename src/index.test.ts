@@ -18,9 +18,16 @@ test("nested LANCET off persists without switching approval mode when gates are 
       const commands = new Map();
       smartApprove({registerCommand: (name, definition) => commands.set(name, definition), on: () => {}});
       if (commands.has("smart-approve-lancet")) throw new Error("obsolete command registered");
-      const statuses = {};
+      const statuses = {
+        "smart-approve-mode": "interactive",
+        "smart-approve-lancet": "on",
+        "smart-approve": "Analyzing...",
+      };
       await commands.get("smart-approve").handler("lancet off", {
-        hasUI: true, ui: {notify: () => {}, setStatus: (id, text) => statuses[id] = text}
+        hasUI: true, ui: {notify: () => {}, setStatus: (id, text) => {
+          if (text === undefined) delete statuses[id];
+          else statuses[id] = text;
+        }}
       });
       console.log(JSON.stringify(statuses));
     `], { cwd: path.resolve(import.meta.dir, ".."), env: { ...process.env, HOME: home }, encoding: "utf8" });
@@ -28,7 +35,10 @@ test("nested LANCET off persists without switching approval mode when gates are 
     const saved = JSON.parse(fs.readFileSync(configPath, "utf8"));
     assert.equal(saved.mode, "auto");
     assert.equal(saved.lancet.enabled, false);
-    assert.deepEqual(JSON.parse(result.stdout), { "smart-approve": "smart-approve auto - lancet off" });
+    assert.deepEqual(JSON.parse(result.stdout), {
+      "smart-approve-mode": "smart-approve auto - lancet off",
+      "smart-approve": "Analyzing...",
+    });
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
@@ -70,7 +80,7 @@ test("verified nested lifecycle preserves both approval modes and never executes
         await definition.handler("lancet on", ctx);
         assert.equal(saved().mode, mode);
         assert.equal(saved().lancet.enabled, true);
-        assert.equal(statuses["smart-approve"], "smart-approve " + mode + " - lancet on");
+        assert.equal(statuses["smart-approve-mode"], "smart-approve " + mode + " - lancet on");
         const marker = path.join(process.env.HOME, "MustNotExist");
         await definition.handler("lancet check printf CaseSensitive > " + marker, ctx);
         assert.equal(fs.existsSync(marker), false);
@@ -81,7 +91,7 @@ test("verified nested lifecycle preserves both approval modes and never executes
         await definition.handler("lancet off", ctx);
         assert.equal(saved().mode, mode);
         assert.equal(saved().lancet.enabled, false);
-        assert.equal(statuses["smart-approve"], "smart-approve " + mode + " - lancet off");
+        assert.equal(statuses["smart-approve-mode"], "smart-approve " + mode + " - lancet off");
         console.log(mode + ": setup/on/check/off passed");
       `], {
         cwd: path.resolve(import.meta.dir, ".."),
