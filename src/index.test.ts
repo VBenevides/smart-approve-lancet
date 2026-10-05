@@ -53,7 +53,7 @@ test("verified nested lifecycle preserves both approval modes and never executes
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "smart-approve-lifecycle-"));
     const directory = path.join(home, ".omp", "agent");
     fs.mkdirSync(path.join(directory, "smart-approve-lancet"), { recursive: true });
-    fs.cpSync(path.resolve(modelDirectory!), path.join(directory, "smart-approve-lancet", "lancet-nano-v0.4.2"), { recursive: true });
+    fs.cpSync(path.resolve(modelDirectory!), path.join(directory, "smart-approve-lancet", "lancet-nano-v0.4.3"), { recursive: true });
     const configPath = path.join(directory, "smart-approve.json");
     fs.writeFileSync(configPath, JSON.stringify({ enabled: false, mode, lancet: { enabled: false } }));
     try {

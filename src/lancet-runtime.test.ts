@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { after, describe, test } from "node:test";
 import { readFile } from "node:fs/promises";
-import { MODEL_ID } from "./lancet/model-manifest.ts";
+import { MODEL_ID, MODEL_FILES } from "./lancet/model-manifest.ts";
 import { classifier, classifierLoaded, releaseClassifier } from "./lancet/runtime.ts";
 import { readVerified } from "./lancet/classifier.ts";
 
@@ -31,7 +31,7 @@ describe("LANCET runtime", () => {
       assert.ok(real);
       const directory = path.join(temporary, "damaged", MODEL_ID);
       fs.mkdirSync(directory, { recursive: true });
-      for (const name of ["model-int8.onnx", "tokenizer.json"] as const) {
+      for (const name of Object.keys(MODEL_FILES).filter(name => name !== "model.json")) {
         fs.copyFileSync(path.join(real, name), path.join(directory, name));
       }
       const metadata = fs.readFileSync(path.join(real, "model.json"));
@@ -44,39 +44,31 @@ describe("LANCET runtime", () => {
   );
 
   test(
-    "matches the source tokenizer and classification bands on the official model",
+    "matches official v0.4.3 CPU scores and bands, including multi-window inputs",
     { skip: realSkip },
     async () => {
       assert.ok(real);
-      const metadata = JSON.parse(await readFile(path.join(real, "model.json"), "utf8")) as {
-        reviewThreshold: number;
-        riskyThreshold: number;
-      };
       const fixture = JSON.parse(
-        await readFile("local/SpecPi-main/packages/lancet-guard/tests/fixtures/parity.json", "utf8"),
-      ) as { cases: Array<Record<string, unknown>> };
+        await readFile("src/fixtures/lancet-v043-parity.json", "utf8"),
+      ) as { cases: Array<{ command: string; score: number; classification: string }> };
       const loaded = await classifier(real);
       try {
         for (const row of fixture.cases) {
-          const command = row.command as string;
-          const shell = row.shell as string | undefined;
-          const encoded = loaded.encode(command, shell);
-          if ("ids" in encoded) {
-            assert.deepEqual(encoded.ids, row.ids, command.slice(0, 80));
-          } else {
-            assert.equal(encoded.reason, row.reason, command.slice(0, 80));
-          }
+          const result = await loaded.score(row.command);
+          assert.equal(result.classification, row.classification, row.command.slice(0, 80));
+          assert.ok(result.score !== null && Math.abs(result.score - row.score) < 1e-6,
+            `score parity: ${result.score} versus ${row.score}`);
+        }
+        for (const [command, shell, reason] of [
+          ["git status", "powershell", "unsupported-shell"],
+          [" ", "bash", "empty-command"],
+          ["echo \0", "bash", "nul-byte"],
+          ["x".repeat(8193), "bash", "raw-input-too-long"],
+        ]) {
           const result = await loaded.score(command, shell);
-          if (result.score === null) {
-            assert.equal(result.classification, "review", command.slice(0, 80));
-          } else {
-            const expectedBand = result.score >= metadata.riskyThreshold
-              ? "risky"
-              : result.score >= metadata.reviewThreshold
-                ? "review"
-                : "not_flagged";
-            assert.equal(result.classification, expectedBand, command.slice(0, 80));
-          }
+          assert.equal(result.classification, "review");
+          assert.equal(result.score, null);
+          assert.equal(result.reason, reason);
         }
       } finally {
         await releaseClassifier(real);

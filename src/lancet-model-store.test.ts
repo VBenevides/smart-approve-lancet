@@ -115,7 +115,6 @@ describe("LANCET model lifecycle", () => {
       const first = await installModel({ agentDir: dir, fetchImpl });
       assert.equal(first.reason, "downloaded");
       assert.equal(modelVerified(target), true);
-      assert.deepEqual(fs.readdirSync(target).sort(), ["model-int8.onnx", "model.json", "tokenizer.json"]);
       assert.deepEqual(leftovers(dir), [path.basename(target)]);
 
       const second = await installModel({

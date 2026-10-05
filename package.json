@@ -1,6 +1,6 @@
 {
   "name": "smart-approve-lancet",
-  "description": "High-risk-only approval hook with LLM risk analysis, behavior detection, protected-path interception, decision memory, and optional local LANCET Nano v0.4.2 Bash scoring for oh-my-pi (OMP) and pi-agent.",
+  "description": "High-risk-only approval hook with LLM risk analysis, behavior detection, protected-path interception, decision memory, and optional local LANCET Nano v0.4.3 Bash scoring for oh-my-pi (OMP) and pi-agent.",
   "version": "2.6.0",
   "files": [
     "dist",

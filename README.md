@@ -94,7 +94,7 @@ Smart Approve Lancet can add a local, CPU-only LANCET Nano scorer for **Bash onl
 
 LANCET `risky` blocks before allow-list, fast paths, LLM, or dialog. `not_flagged` continues through the native Smart Approve Lancet pipeline, but is **not a safety guarantee**. `review` continues through the existing Smart Approve Lancet approval path and cannot be bypassed by an allow-list entry or a no-behavior fast pass. A missing, damaged, invalid, or unavailable model fails closed instead of silently bypassing approval.
 
-The integration targets the local **SpecPi LANCET Nano v0.4.2 CPU INT8 model**, identifier `lancet-nano-v0.4.2`. It does not use v0.4.1, Jev, a Jev package, a hosted classifier, or a remote inference endpoint. The v0.4.2 release metadata pins `reviewThreshold` `0.5272825855548885` and `riskyThreshold` `0.9600226519174887`; the exact archive and file digests are in `src/lancet/model-manifest.ts`.
+The integration targets the local **LANCET Nano v0.4.3 CPU INT8 model**, identifier `lancet-nano-v0.4.3`. Smart Approve Lancet remains Bash-only even though the upstream model supports PowerShell and cmd. The v0.4.3 runtime reads long commands in overlapping 512-token windows, pools each payload token exactly once, and applies the separate projection, LayerNorm, and risk head. Inputs over 8192 UTF-8 bytes require review. Bands use risk-logit thresholds `-3.4448594882714976` and `7.71649796562147`; calibrated probability thresholds are `0.2956467684116474` and `0.991200665739696`. Exact archive and file digests are in `src/lancet/model-manifest.ts`.
 
 ### Setup and lifecycle
 
@@ -108,14 +108,17 @@ The integration targets the local **SpecPi LANCET Nano v0.4.2 CPU INT8 model**, 
 
 LANCET actions live under `/smart-approve-lancet lancet`. The old `/smart-approve` command is removed, not retained as an alias; `/smart-approve-lancet` is now the parent command, not a standalone LANCET command. Existing config, allow-list, log, and model storage paths remain unchanged, so no stored settings or model migration is required.
 
-To verify the full nested lifecycle against an already installed official model, run `LANCET_MODEL_DIRECTORY="$HOME/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.2" bun test --timeout 120000 src/index.test.ts`. The integration test copies the model into isolated temporary homes, checks both approval modes, and verifies that `check` scores without executing its shell payload.
+To verify the full nested lifecycle against an already installed official model, run `LANCET_MODEL_DIRECTORY="$HOME/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.3" bun test --timeout 120000 src/index.test.ts`. The integration test copies the model into isolated temporary homes, checks both approval modes, and verifies that `check` scores without executing its shell payload.
 
-`setup` downloads the pinned HTTPS GitHub release archive to a private staging directory, verifies the archive and all three required model files, and atomically installs them under the existing agent directory:
+`setup` downloads the pinned HTTPS GitHub release archive to a private staging directory, verifies the archive and all six required model files, and atomically installs them under the existing agent directory. After upgrading, run `/smart-approve-lancet lancet setup` to install v0.4.3; v0.4.2 files are not reused:
 
 ```text
-~/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.2/
-├── model-int8.onnx
-├── tokenizer.json
+~/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.3/
+├── encoder-int8.onnx
+├── head.bin
+├── head.json
+├── vocab.json
+├── merges.txt
 └── model.json
 ```
 

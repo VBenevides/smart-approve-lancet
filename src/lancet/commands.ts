@@ -114,7 +114,7 @@ export class LancetCommandHandler {
 
   private enable(ctx: ExtensionCtx): void {
     if (!modelVerified(this.directory)) {
-      const message = "[Smart Approve Lancet] Cannot enable: the pinned v0.4.2 model is not verified. Run /smart-approve-lancet lancet setup first.";
+      const message = "[Smart Approve Lancet] Cannot enable: the pinned v0.4.3 model is not verified. Run /smart-approve-lancet lancet setup first.";
       this.deps.logger.log("lancet enable refused: model is not verified");
       this.notify(ctx, message, "warning");
       return;

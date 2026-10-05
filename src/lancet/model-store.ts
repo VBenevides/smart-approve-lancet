@@ -68,7 +68,7 @@ function verifyFile(file: string, expected: { bytes: number; sha256: string }): 
   return bytes.length === expected.bytes && crypto.createHash("sha256").update(bytes).digest("hex") === expected.sha256;
 }
 
-/** True only when every installed file matches the pinned v0.4.2 digest. */
+/** True only when every installed file matches the pinned release digest. */
 export function modelVerified(directory = modelDirectory()): boolean {
   if (!modelState(directory).installed) return false;
   try {
