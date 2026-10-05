@@ -1,9 +1,9 @@
 {
-  "name": "smart-approve-local-benchmark",
+  "name": "smart-approve-lancet-local-benchmark",
   "private": true,
   "type": "module",
   "dependencies": {
-    "smart-approve": "file:../..",
+    "smart-approve-lancet": "file:..",
     "zod": "^4.0.0"
   }
 }

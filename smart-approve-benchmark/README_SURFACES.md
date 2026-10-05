@@ -1,6 +1,6 @@
-# Smart Approve benchmark — non-shell surface expansion
+# Smart Approve Lancet benchmark — non-shell surface expansion
 
-This patch keeps the existing public shell benchmark and adds deterministic cases for the Smart Approve surfaces that shell-command datasets do not exercise:
+This patch keeps the existing public shell benchmark and adds deterministic cases for the Smart Approve Lancet surfaces that shell-command datasets do not exercise:
 
 - `eval` — Python and JavaScript/Bun subprocess/system-command detection
 - `hub op:start` — dangerous applications, interpreter execution flags, dangerous args, and sensitive cwd
@@ -26,7 +26,7 @@ Keep your existing `smart_approve_bridge.mjs`, `package.json`, and LANCET integr
 No benchmark command/code/tool payload is executed.
 
 - `eval` native delegation is replaced with a stub.
-- `hub`, `write`, and `edit` are tested by invoking Smart Approve's registered `tool_call` handlers directly.
+- `hub`, `write`, and `edit` are tested by invoking Smart Approve Lancet's registered `tool_call` handlers directly.
 - Protected-path prompts use a fake UI that records that approval was requested and responds `deny`.
 - The bridge creates only harmless fixture files/symlinks under its isolated temporary benchmark HOME.
 
@@ -38,7 +38,7 @@ The non-shell suite is enabled by default:
 python benchmark.py --mode smart-approve --runs 3
 ```
 
-Compare Smart Approve and Smart Approve + LANCET:
+Compare Smart Approve Lancet with local scoring disabled and enabled (the `smart-approve` and `smart-approve-lancet` mode identifiers remain distinct and unchanged):
 
 ```bash
 python benchmark.py \
@@ -46,7 +46,7 @@ python benchmark.py \
   --runs 3
 ```
 
-`lancet-only` is skipped for the non-shell suite because LANCET Nano is a shell-command classifier. `smart-approve-lancet` still runs the Smart Approve eval/hub/write/edit coverage, which should be equivalent to Smart Approve on those surfaces.
+`lancet-only` is skipped for the non-shell suite because LANCET Nano is a shell-command classifier. `smart-approve-lancet` still runs the Smart Approve Lancet eval/hub/write/edit coverage, which should be equivalent to `smart-approve` on those surfaces.
 
 Quick smoke test:
 
@@ -80,7 +80,7 @@ The terminal prints:
 - a separate table for `eval`, `hub`, `write`, and `edit`;
 - an integrated table that combines shell rows with the non-shell surface rows.
 
-The integrated comparison uses the same mode for both datasets when available. Its `lancet-only` row intentionally combines the LANCET-only shell result with the Smart Approve surface result, making the gain from combining LANCET shell coverage with Smart Approve's other surfaces visible through the score and `SCORE Δ` columns.
+The integrated comparison uses the same mode for both datasets when available. Its `lancet-only` row intentionally combines the LANCET-only shell result with the Smart Approve Lancet surface result, making the gain from combining LANCET shell coverage with the other surfaces visible through the score and `SCORE Δ` columns.
 
 Both tables report:
 
@@ -94,4 +94,4 @@ The integrated table uses weighted safe/risky row counts across the shell and su
 
 ## Label philosophy
 
-The safe controls deliberately include benign subprocess/process-launch cases such as `subprocess.run(["echo", "hello"])`, `curl --version`, and `ssh -V`. Smart Approve may intentionally interrupt some of them. Those interruptions are counted as safe false-stops so the suite measures policy precision rather than merely mirroring Smart Approve's existing rules.
+The safe controls deliberately include benign subprocess/process-launch cases such as `subprocess.run(["echo", "hello"])`, `curl --version`, and `ssh -V`. Smart Approve Lancet may intentionally interrupt some of them. Those interruptions are counted as safe false-stops so the suite measures policy precision rather than merely mirroring the existing rules.

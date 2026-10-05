@@ -1,4 +1,4 @@
-# smart-approve
+# Smart Approve Lancet
 
 An approval gate for **oh-my-pi (OMP)** and upstream **pi-agent**: behavior detection + LLM risk analysis decide whether a dangerous operation runs, with interactive confirmation dialogs or a fully automatic mode. Compatible with both hosts.
 
@@ -61,17 +61,17 @@ Two approval modes:
 | `interactive` (default) | LLM analysis shown in a dialog; you choose session-allow / permanent-allow / deny |
 | `auto` | LLM verdict decides: block or execute; no dialogs (non-blocking notifications only) |
 
-The status bar displays both current values in one chip: `smart-approve interactive - lancet off`, for example. Approval mode (`auto`/`interactive`) and LANCET scoring (`off`/`on`) are independent; changing either refreshes the combined status.
+The status bar displays both current values in one chip: `smart-approve-lancet interactive - lancet off`, for example. Approval mode (`auto`/`interactive`) and LANCET scoring (`off`/`on`) are independent; changing either refreshes the combined status.
 
 The persistent chip replaces the previous mode line and clears the previous LANCET-only line; temporary analysis messages use a separate slot. Restart OMP after updating the extension so the new status handler replaces the loaded one.
 
 Switch at runtime from the TUI (or RPC client) — no restart needed, and the choice persists:
 
 ```
-/smart-approve              # toggle interactive <-> auto
-/smart-approve auto         # switch to auto
-/smart-approve interactive  # switch to interactive
-/smart-approve status       # show mode, thresholds, coverage
+/smart-approve-lancet              # toggle interactive <-> auto
+/smart-approve-lancet auto         # switch to auto
+/smart-approve-lancet interactive  # switch to interactive
+/smart-approve-lancet status       # show mode, thresholds, coverage
 ```
 
 The current mode is also shown as a persistent status-bar chip. The command writes only the changed keys back to `smart-approve.json` — every other user-edited field is preserved.
@@ -83,30 +83,30 @@ Auto-mode decision rules:
 - Auto-mode approvals are **not** written to the allow-list (AI verdicts can change; remembered approvals should stay human decisions).
 - Deny tier (regex-confident, blocks without any LLM verdict): force-push to `main`/`master`/`production`/`prod`/`release`/`trunk`, `rm -rf ~` / `$HOME`, block-device writes.
 
-## Smart Approve LANCET
+## Local LANCET scoring
 
-Smart Approve can add a local, CPU-only LANCET Nano scorer for **Bash only**. It is disabled by default. Smart Approve keeps ownership of the policy chain:
+Smart Approve Lancet can add a local, CPU-only LANCET Nano scorer for **Bash only**. It is disabled by default. Smart Approve Lancet keeps ownership of the policy chain:
 
-1. Smart Approve hard-block rules.
+1. Smart Approve Lancet hard-block rules.
 2. LANCET scores every non-hard-blocked Bash command when enabled.
 3. Remembered allow-list, then the no-behavior fast pass, for `not_flagged`.
 4. Existing headless, LLM, auto-policy, or interactive-dialog handling for LANCET `review` and remaining dangerous commands.
 
-LANCET `risky` blocks before allow-list, fast paths, LLM, or dialog. `not_flagged` continues through the native Smart Approve pipeline, but is **not a safety guarantee**. `review` continues through the existing Smart Approve approval path and cannot be bypassed by an allow-list entry or a no-behavior fast pass. A missing, damaged, invalid, or unavailable model fails closed instead of silently bypassing approval.
+LANCET `risky` blocks before allow-list, fast paths, LLM, or dialog. `not_flagged` continues through the native Smart Approve Lancet pipeline, but is **not a safety guarantee**. `review` continues through the existing Smart Approve Lancet approval path and cannot be bypassed by an allow-list entry or a no-behavior fast pass. A missing, damaged, invalid, or unavailable model fails closed instead of silently bypassing approval.
 
 The integration targets the local **SpecPi LANCET Nano v0.4.2 CPU INT8 model**, identifier `lancet-nano-v0.4.2`. It does not use v0.4.1, Jev, a Jev package, a hosted classifier, or a remote inference endpoint. The v0.4.2 release metadata pins `reviewThreshold` `0.5272825855548885` and `riskyThreshold` `0.9600226519174887`; the exact archive and file digests are in `src/lancet/model-manifest.ts`.
 
 ### Setup and lifecycle
 
 ```text
-/smart-approve lancet status       # model lifecycle and enabled-state status; no network
-/smart-approve lancet setup        # the only network-using path
-/smart-approve lancet on           # enable only after checksum verification
-/smart-approve lancet off          # immediate escape hatch; disables Bash scoring
-/smart-approve lancet check <command> # score for inspection; never executes it
+/smart-approve-lancet lancet status       # model lifecycle and enabled-state status; no network
+/smart-approve-lancet lancet setup        # the only network-using path
+/smart-approve-lancet lancet on           # enable only after checksum verification
+/smart-approve-lancet lancet off          # immediate escape hatch; disables Bash scoring
+/smart-approve-lancet lancet check <command> # score for inspection; never executes it
 ```
 
-LANCET actions now live under `/smart-approve lancet`; the separate slash command is removed. The model storage directory is unchanged.
+LANCET actions live under `/smart-approve-lancet lancet`. The old `/smart-approve` command is removed, not retained as an alias; `/smart-approve-lancet` is now the parent command, not a standalone LANCET command. Existing config, allow-list, log, and model storage paths remain unchanged, so no stored settings or model migration is required.
 
 To verify the full nested lifecycle against an already installed official model, run `LANCET_MODEL_DIRECTORY="$HOME/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.2" bun test --timeout 120000 src/index.test.ts`. The integration test copies the model into isolated temporary homes, checks both approval modes, and verifies that `check` scores without executing its shell payload.
 
@@ -119,7 +119,7 @@ To verify the full nested lifecycle against an already installed official model,
 └── model.json
 ```
 
-The archive is not downloaded during package installation, session startup, `on`, `off`, or inference. Inference loads lazily on the first eligible Bash command, uses the CPU execution provider from the exact `onnxruntime-node` `1.30.0` dependency, and caches one classifier per model directory until `/smart-approve lancet off` or session end releases it. The release archive is about 100 MB and the ONNX file is about 111 MB; resident memory and score latency depend on the host CPU and ONNX Runtime.
+The archive is not downloaded during package installation, session startup, `on`, `off`, or inference. Inference loads lazily on the first eligible Bash command, uses the CPU execution provider from the exact `onnxruntime-node` `1.30.0` dependency, and caches one classifier per model directory until `/smart-approve-lancet lancet off` or session end releases it. The release archive is about 100 MB and the ONNX file is about 111 MB; resident memory and score latency depend on the host CPU and ONNX Runtime.
 
 Add or persist the setting explicitly if needed:
 
@@ -131,7 +131,7 @@ Add or persist the setting explicitly if needed:
 }
 ```
 
-When enabled, model load or inference failure blocks the eligible Bash command and reports `/smart-approve lancet setup` remediation. `/smart-approve lancet off` persists immediately and restores the existing Smart Approve path.
+When enabled, model load or inference failure blocks the eligible Bash command and reports `/smart-approve-lancet lancet setup` remediation. `/smart-approve-lancet lancet off` persists immediately and restores the existing Smart Approve Lancet path.
 
 ## Architecture
 
@@ -261,7 +261,7 @@ Operations are never executed by the extension itself. After passing the approva
 ## Install
 
 ```sh
-npm install smart-approve
+npm install smart-approve-lancet
 ```
 
 To build and install the current checkout locally:
@@ -270,14 +270,14 @@ To build and install the current checkout locally:
 ./local/install-locally.sh
 ```
 
-The script performs a production build, bundles the ONNX Runtime JavaScript loader, installs its CPU runtime dependencies and native bindings beside the extension, places the package under `~/.omp/agent/node_modules/smart-approve`, and idempotently registers its absolute extension path in `~/.omp/agent/config.yml`. An existing equivalent `~/…` path is reused rather than registered a second time.
+The script performs a production build, bundles the ONNX Runtime JavaScript loader, installs its CPU runtime dependencies and native bindings beside the extension, places the package under `~/.omp/agent/node_modules/smart-approve-lancet`, and idempotently registers its absolute extension path in `~/.omp/agent/config.yml`. An existing equivalent `~/…` path is reused rather than registered a second time.
 
 Then configure OMP to load the extension:
 
 ```yaml
 # ~/.omp/agent/config.yml   (or ~/.pi/agent/config.yml for pi-agent)
 extensions:
-  - /absolute/path/to/.omp/agent/node_modules/smart-approve/dist/index.js
+  - /absolute/path/to/.omp/agent/node_modules/smart-approve-lancet/dist/index.js
 tools:
   approvalMode: yolo
 ```
@@ -287,7 +287,7 @@ tools:
 
 The custom "bash"/"eval" tools shadow the built-ins by name — no `bash.enabled` change is needed. Restart the host after installing or editing.
 
-Run `/smart-approve lancet setup` after installation if you want the optional local model. The package does not download model data automatically.
+Run `/smart-approve-lancet lancet setup` after installation if you want the optional local model. The package does not download model data automatically.
 
 ## Configuration
 
@@ -320,7 +320,7 @@ Config lives at `~/.omp/agent/smart-approve.json` (or `~/.pi/agent/smart-approve
 | Field | Default | Description |
 |---|---|---|
 | `enabled` | `true` | Master switch |
-| `mode` | `"interactive"` | `"interactive"` (dialogs) or `"auto"` (AI decides, no dialogs). Switchable at runtime via `/smart-approve` |
+| `mode` | `"interactive"` | `"interactive"` (dialogs) or `"auto"` (AI decides, no dialogs). Switchable at runtime via `/smart-approve-lancet` |
 | `autoBlockRisk` | `"high"` | Auto mode: AI risk at or above this level blocks (`"high"` or `"medium"`) |
 | `autoFallback` | `"regex"` | Auto mode when the LLM chain fails: `"regex"` (hard-block + deny tier still block, rest executes) or `"block"` (everything reviewable blocks) |
 | `autoInHeadless` | `false` | Auto mode also applies in headless/subagent sessions (AI decides instead of blanket block) |
@@ -363,7 +363,7 @@ Session allows are in-memory only, cleared on restart. You can edit or delete th
 | `child_process.spawn(hostBin, ["--mode", "rpc", ...])` | Persistent RPC child for LLM risk analysis |
 | `pi.on("tool_call", handler)` | hub launch gating + write/edit protected-path interception |
 | `pi.on("session_start" / "session_shutdown")` | Status chips / RPC and LANCET classifier cleanup |
-| `pi.registerCommand("smart-approve", …)` | Runtime mode switching, status, and nested LANCET lifecycle actions with argument completion |
+| `pi.registerCommand("smart-approve-lancet", …)` | Runtime mode switching, status, and nested LANCET lifecycle actions with argument completion |
 | `ctx.hasUI` | Detect headless/subagent context |
 | `ctx.sessionManager.getBranch()` / `getEntries()` | Gather session context for LLM review |
 | `ctx.ui.setStatus / notify / confirm / select` | Status, notifications, dialogs |
@@ -372,7 +372,7 @@ Session allows are in-memory only, cleared on restart. You can edit or delete th
 ## Project layout
 
 ```
-smart-approve/
+smart-approve-lancet/
 ├── README.md
 ├── THIRD_PARTY.md       ← adapted SpecPi/LANCET and dependency notices
 ├── package.json          ← omp.extensions / pi.extensions manifest
@@ -415,6 +415,12 @@ smart-approve/
 ~/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.2/           — checksum-verified model files after setup
 
 ```
+## Acknowledgements
+
+Credit to **mentalfl0w**, author of the original [smart-approve](https://github.com/mentalfl0w/smart-approve), on which this project is based.
+
+Thanks to **Tanner Middleton** and the [LANCET Model project](https://github.com/TannerMidd/LANCET-model) for the model and runtime that power Smart Approve Lancet's optional local Bash risk scoring. See [`THIRD_PARTY.md`](THIRD_PARTY.md) for attribution and applicable licenses.
+
 ## License
 
-Smart Approve source code is MIT-licensed. See [`THIRD_PARTY.md`](THIRD_PARTY.md) for the adapted SpecPi runtime, ONNX Runtime dependency, model license, and notice boundaries.
+Smart Approve Lancet source code is MIT-licensed. See [`THIRD_PARTY.md`](THIRD_PARTY.md) for the adapted SpecPi runtime, ONNX Runtime dependency, model license, and notice boundaries.

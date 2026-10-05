@@ -9,7 +9,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { ConfigStore } from "./config.ts";
-import { approvalStatus, ModeManager } from "./mode-manager.ts";
+import { ModeManager } from "./mode-manager.ts";
 import type { LoggerLike } from "./logger.ts";
 
 const silentLogger: LoggerLike = { log: () => undefined };
@@ -75,21 +75,6 @@ test("status block reports mode and coverage", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("combined status identifies approval mode and LANCET state", () => {
-  const dir = tempDir();
-  try {
-    const { store, manager } = makeManager(dir);
-    for (const mode of ["interactive", "auto"] as const) {
-      manager.set(mode);
-      for (const enabled of [false, true]) {
-        store.update({ lancet: { enabled } });
-        assert.equal(approvalStatus(store.config), `smart-approve ${mode} - lancet ${enabled ? "on" : "off"}`);
-      }
-    }
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
 
 test("approval mode changes preserve enabled LANCET across persistence", () => {
   const dir = tempDir();

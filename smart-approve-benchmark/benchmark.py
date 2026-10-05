@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tool-routing benchmark for Smart Approve, Smart Approve + LANCET, and LANCET-only.
+"""Tool-routing benchmark for Smart Approve Lancet with scoring off/on, and LANCET-only.
 
 The benchmark replays *proposed tool calls*, not arbitrary scenario prose.
 Nothing is executed. Bash/eval delegates are stubbed by Bun bridges; hook-only tools are
@@ -592,7 +592,7 @@ class JsonlBridge:
                 if not source_root.is_dir():
                     raise RuntimeError(
                         f"LANCET model root not found: {source_root}. "
-                        "Run /smart-approve lancet setup or pass --lancet-model-root."
+                        "Run /smart-approve-lancet lancet setup or pass --lancet-model-root."
                     )
                 (agent_dir / "smart-approve-lancet").symlink_to(source_root, target_is_directory=True)
 
@@ -660,11 +660,11 @@ class JsonlBridge:
 def route_for(mode: str, tool: str) -> tuple[bool, str, bool]:
     """Return supported, human route label, lancet_routed."""
     if mode == "smart-approve":
-        return True, "Smart Approve", False
+        return True, "Smart Approve Lancet (scoring off)", False
     if mode == "smart-approve-lancet":
         if tool == "bash":
             return True, "SA hard rules → LANCET → SA review", True
-        return True, "Smart Approve", False
+        return True, "Smart Approve Lancet", False
     if mode == "lancet-only":
         if tool == "bash":
             return True, "LANCET", True

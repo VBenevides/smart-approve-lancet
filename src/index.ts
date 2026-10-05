@@ -9,7 +9,7 @@
  *   - EvalToolGate  — custom "eval" tool (same pattern, coverage.eval)
  *   - HubLaunchGuard — tool_call interception for hub op:"start"
  *   - write/edit protected-path interception (tool_call hook)
- *   - /smart-approve slash command (runtime mode switching)
+ *   - /smart-approve-lancet slash command (runtime mode switching)
  *
  * The custom-tool execute() path is NOT subject to
  * EXTENSION_HANDLER_TIMEOUT_MS (30s), so LLM analysis and dialogs have
@@ -88,7 +88,7 @@ class SmartApprove {
 
   /** Register the shadowed tools, event hooks and slash command. */
   register(): void {
-    this.pi.registerCommand("smart-approve", {
+    this.pi.registerCommand("smart-approve-lancet", {
       description: "Switch approval mode or manage LANCET (lancet setup|on|off|check)",
       getArgumentCompletions: (prefix) => {
         const values = ["auto", "interactive", "status", "lancet", "lancet setup", "lancet on", "lancet off", "lancet check", "lancet status"];
@@ -144,14 +144,14 @@ class SmartApprove {
 
     // Persistent mode chip in the TUI status bar.
     this.pi.on("session_start", async (_event, ctx: ExtensionCtx) => {
-      ctx.ui.setStatus("smart-approve", undefined);
+      ctx.ui.setStatus("smart-approve-lancet-analysis", undefined);
       updateApprovalStatus(ctx, this.configStore.config);
     });
 
 
   }
 
-  // ── slash command: /smart-approve [auto|interactive|status|lancet …] ──
+  // ── slash command: /smart-approve-lancet [auto|interactive|status|lancet …] ──
 
   private async handleCommand(args: unknown, ctx: ExtensionCtx): Promise<void> {
     const raw = String(args ?? "").trim();

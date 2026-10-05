@@ -260,7 +260,7 @@ export abstract class ToolGate {
         lancetReview = true;
         this.safeNotify(
           ctx,
-          `[Smart Approve LANCET] Review handoff: Smart Approve approval required (score=${score}${verdict.reason ? `, reason=${logText(verdict.reason)}` : ""}).`,
+          `[Smart Approve Lancet] Review handoff: Smart Approve Lancet approval required (score=${score}${verdict.reason ? `, reason=${logText(verdict.reason)}` : ""}).`,
           "info",
         );
       }
@@ -295,7 +295,7 @@ export abstract class ToolGate {
     let aiResult: RiskAnalysis | null = null;
     let analysisText: string | null = null;
     if (config.llmAnalysis) {
-      this.safeStatus(ctx, "smart-approve", t.analyzing);
+      this.safeStatus(ctx, "smart-approve-lancet-analysis", t.analyzing);
       try {
         const sessionCtx = contextGatherer.gather(ctx, config.contextMaxChars);
         const contextSection = contextGatherer.format(sessionCtx, t);
@@ -309,7 +309,7 @@ export abstract class ToolGate {
       } catch (e) {
         logger.log(`${this.toolName}: LLM analysis failed: ${e instanceof Error ? e.message : String(e)}`);
       } finally {
-        this.safeStatus(ctx, "smart-approve", undefined);
+        this.safeStatus(ctx, "smart-approve-lancet-analysis", undefined);
       }
     }
 
@@ -330,8 +330,8 @@ export abstract class ToolGate {
       if (reviewVerdict === "block") {
         if (autoMode) {
           return this.textError(
-            `Blocked: Smart Approve LLM denied the command\n${subjectLabel}: ${subject}`,
-            { blocked: true, reason: "lancet-llm-block", source: "smart-approve-llm" },
+            `Blocked: Smart Approve Lancet LLM denied the command\n${subjectLabel}: ${subject}`,
+            { blocked: true, reason: "lancet-llm-block", source: "smart-approve-lancet-llm" },
           );
         }
         logger.log(`${this.toolName}: interactive approval required after LLM denial (${label})`);

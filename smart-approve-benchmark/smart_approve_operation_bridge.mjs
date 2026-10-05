@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
- * Safe bridge for Smart Approve's non-bash OMP surfaces.
+ * Safe bridge for Smart Approve Lancet's non-bash OMP surfaces.
  *
  * Handles eval, hub op:start, write, and edit. No payload is executed:
  * - eval's native delegation is stubbed via ctx.invokeTool
- * - hub/write/edit call only Smart Approve's tool_call hooks
+ * - hub/write/edit call only Smart Approve Lancet's tool_call hooks
  */
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
@@ -67,7 +67,7 @@ const apiBase = {
   exec() { throw new Error("benchmark invariant: exec during load"); },
 };
 
-// Smart Approve forks may register additional presentation-only hooks. Unknown
+// Smart Approve Lancet forks may register additional presentation-only hooks. Unknown
 // register* APIs are harmless for this benchmark, so accept them as no-ops while
 // keeping runtime/action APIs explicit. This makes the bridge resilient without
 // changing the security decision paths we exercise.
@@ -223,10 +223,10 @@ async function importSmartApprove() {
   }
 
   // Normal installed-package layout.
-  candidates.push("smart-approve");
+  candidates.push("smart-approve-lancet/dist/index.js");
 
   // Development layout used by this benchmark:
-  //   smart-approve/
+  //   smart-approve-lancet/
   //   ├── src/index.ts
   //   └── smart-approve-benchmark/smart_approve_operation_bridge.mjs
   // Bun can import the TypeScript source directly, so this exercises the
@@ -250,7 +250,7 @@ async function importSmartApprove() {
   }
 
   throw new Error(
-    "Unable to load Smart Approve from npm or the local parent repository.\n" +
+    "Unable to load Smart Approve Lancet from npm or the local parent repository.\n" +
       errors.map((x) => `  - ${x}`).join("\n") +
       "\nSet SMART_APPROVE_BENCHMARK_MODULE to an explicit module path if needed.",
   );
@@ -260,7 +260,7 @@ async function loadSmartApprove() {
   const { mod, source } = await importSmartApprove();
   const factory = mod.default ?? mod;
   if (typeof factory !== "function") {
-    throw new TypeError(`Smart Approve export from ${source} is not a function`);
+    throw new TypeError(`Smart Approve Lancet export from ${source} is not a function`);
   }
   await factory(api);
   return {
@@ -274,14 +274,14 @@ let loaded;
 try {
   loaded = await loadSmartApprove();
 } catch (error) {
-  process.stderr.write(`Failed to load smart-approve in operation bridge: ${error?.stack ?? error}\n`);
+  process.stderr.write(`Failed to load smart-approve-lancet in operation bridge: ${error?.stack ?? error}\n`);
   process.stderr.write(`cwd=${process.cwd()} HOME=${process.env.HOME ?? ""}\n`);
   process.exit(1);
 }
 
 let packageVersion = "unknown";
 try {
-  const pkg = await import("smart-approve/package.json", { with: { type: "json" } });
+  const pkg = await import("smart-approve-lancet/package.json", { with: { type: "json" } });
   packageVersion = pkg.default?.version ?? pkg.version ?? "unknown";
 } catch {
   try {
@@ -295,7 +295,7 @@ try {
 
 process.stdout.write(`${JSON.stringify({
   type: "ready",
-  package: "smart-approve",
+  package: "smart-approve-lancet",
   version: packageVersion,
   source: loaded.source,
   tools: [...tools.keys()],
@@ -303,7 +303,7 @@ process.stdout.write(`${JSON.stringify({
 })}\n`);
 
 async function runEval(id, rawInput, cwd) {
-  if (!loaded.evalTool?.execute) throw new Error("smart-approve did not register eval");
+  if (!loaded.evalTool?.execute) throw new Error("smart-approve-lancet did not register eval");
   const input = expand(rawInput);
   const { ctx, wasDelegated, wasAsked } = makeContext({ interactive: false, cwd: expandString(cwd) || workspace });
   const started = performance.now();

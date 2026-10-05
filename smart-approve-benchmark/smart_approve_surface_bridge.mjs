@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Safe bridge for Smart Approve's non-bash security surfaces.
+ * Safe bridge for Smart Approve Lancet's non-bash security surfaces.
  *
  * Covered surfaces:
  *   - eval (registered shadow tool)
@@ -257,10 +257,10 @@ function makeContext({ interactive = false } = {}) {
 }
 
 async function loadSmartApprove() {
-  const mod = await import("smart-approve/dist/index.js");
+  const mod = await import("smart-approve-lancet/dist/index.js");
   const factory = mod.default ?? mod;
   if (typeof factory !== "function") {
-    throw new TypeError("smart-approve default export is not an extension factory");
+    throw new TypeError("smart-approve-lancet default export is not an extension factory");
   }
   await factory(api);
   return {
@@ -275,20 +275,20 @@ let loaded;
 try {
   loaded = await loadSmartApprove();
 } catch (error) {
-  process.stderr.write(`Failed to load smart-approve: ${error?.stack ?? error}\n`);
+  process.stderr.write(`Failed to load smart-approve-lancet: ${error?.stack ?? error}\n`);
   process.exit(1);
 }
 
 let packageVersion = "unknown";
 try {
-  const pkg = await import("smart-approve/package.json", { with: { type: "json" } });
+  const pkg = await import("smart-approve-lancet/package.json", { with: { type: "json" } });
   packageVersion = pkg.default?.version ?? pkg.version ?? "unknown";
 } catch {}
 
 process.stdout.write(
   `${JSON.stringify({
     type: "ready",
-    package: "smart-approve",
+    package: "smart-approve-lancet",
     version: packageVersion,
     surfaces: {
       eval: Boolean(loaded.evalTool),
@@ -335,7 +335,7 @@ async function runHookSurface(id, surface, rawInput) {
 
 async function runEval(id, rawInput) {
   if (!loaded.evalTool || typeof loaded.evalTool.execute !== "function") {
-    throw new Error("smart-approve did not register an eval tool");
+    throw new Error("smart-approve-lancet did not register an eval tool");
   }
   const input = expandValue(rawInput);
   const { ctx, wasDelegated, wasAsked } = makeContext({ interactive: false });

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Safe JSONL bridge between the Python benchmark and the real smart-approve package.
+ * Safe JSONL bridge between the Python benchmark and the real smart-approve-lancet package.
  *
  * SECURITY INVARIANT: dataset commands are NEVER executed. The only native-tool
  * delegation surface, ctx.invokeTool(), is replaced by a recorder that returns a
@@ -105,10 +105,10 @@ function makeContext() {
     setStatus: noop,
     clearStatus: noop,
     confirm: async () => {
-      throw new Error("benchmark invariant violated: headless Smart Approve requested UI.confirm");
+      throw new Error("benchmark invariant violated: headless Smart Approve Lancet requested UI.confirm");
     },
     select: async () => {
-      throw new Error("benchmark invariant violated: headless Smart Approve requested UI.select");
+      throw new Error("benchmark invariant violated: headless Smart Approve Lancet requested UI.select");
     },
   };
 
@@ -166,23 +166,23 @@ function makeContext() {
 
 const benchmarkMode = process.env.SMART_APPROVE_BENCHMARK_MODE ?? "smart-approve";
 async function loadSmartApprove() {
-  const mod = await import("smart-approve/dist/index.js");
+  const mod = await import("smart-approve-lancet/dist/index.js");
   const factory = mod.default ?? mod;
   if (typeof factory !== "function") {
-    throw new TypeError("smart-approve default export is not an extension factory");
+    throw new TypeError("smart-approve-lancet default export is not an extension factory");
   }
   await factory(api);
   if (benchmarkMode === "lancet-only") {
     const lancetCommand = commands.get("smart-approve-lancet");
     if (!lancetCommand || typeof lancetCommand.handler !== "function") {
-      throw new Error("smart-approve did not register the smart-approve-lancet command");
+      throw new Error("smart-approve-lancet did not register the smart-approve-lancet parent command");
     }
     return lancetCommand;
   }
   const bash = tools.get("bash");
   if (!bash || typeof bash.execute !== "function") {
     throw new Error(
-      `smart-approve did not register a bash tool; registered tools: ${[...tools.keys()].join(", ")}`,
+      `smart-approve-lancet did not register a bash tool; registered tools: ${[...tools.keys()].join(", ")}`,
     );
   }
   return bash;
@@ -192,31 +192,31 @@ let bashTool;
 try {
   bashTool = await loadSmartApprove();
 } catch (error) {
-  process.stderr.write(`Failed to load smart-approve: ${error?.stack ?? error}\n`);
+  process.stderr.write(`Failed to load smart-approve-lancet: ${error?.stack ?? error}\n`);
   process.exit(1);
 }
 
 let packageVersion = "unknown";
 try {
-  const pkg = await import("smart-approve/package.json", { with: { type: "json" } });
+  const pkg = await import("smart-approve-lancet/package.json", { with: { type: "json" } });
   packageVersion = pkg.default?.version ?? pkg.version ?? "unknown";
 } catch {
   // package.json may not be exported by the package; version is informational only.
 }
 
 process.stdout.write(
-  `${JSON.stringify({ type: "ready", package: "smart-approve", version: packageVersion, mode: benchmarkMode })}\n`,
+  `${JSON.stringify({ type: "ready", package: "smart-approve-lancet", version: packageVersion, mode: benchmarkMode })}\n`,
 );
 
 function parseLancetNotification(notifications) {
   const notification = notifications.find(
-    ({ message }) => typeof message === "string" && message.startsWith("[Smart Approve LANCET]"),
+    ({ message }) => typeof message === "string" && message.startsWith("[Smart Approve Lancet]"),
   );
   if (!notification) {
     throw new Error("LANCET command produced no result notification");
   }
   const match = notification.message.match(
-    /^\[Smart Approve LANCET\] (risky|review|not_flagged), score=[^;]+; command=/u,
+    /^\[Smart Approve Lancet\] (risky|review|not_flagged), score=[^;]+; command=/u,
   );
   if (!match) {
     throw new Error(notification.message);
@@ -254,7 +254,7 @@ for await (const line of rl) {
     let delegated = false;
     let resultText = "";
     if (benchmarkMode === "lancet-only") {
-      await bashTool.handler(`check ${command}`, ctx);
+      await bashTool.handler(`lancet check ${command}`, ctx);
       const lancet = parseLancetNotification(notifications);
       decision = lancet.classification === "not_flagged" ? "allow" : "stop";
       resultText = lancet.message;

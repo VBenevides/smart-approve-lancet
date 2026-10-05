@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Safe JSONL bridge between the Python benchmark and the real smart-approve package.
+ * Safe JSONL bridge between the Python benchmark and the real smart-approve-lancet package.
  *
  * SECURITY INVARIANT: dataset commands are NEVER executed. The only native-tool
  * delegation surface, ctx.invokeTool(), is replaced by a recorder that returns a
@@ -104,10 +104,10 @@ function makeContext() {
     setStatus: noop,
     clearStatus: noop,
     confirm: async () => {
-      throw new Error("benchmark invariant violated: headless Smart Approve requested UI.confirm");
+      throw new Error("benchmark invariant violated: headless Smart Approve Lancet requested UI.confirm");
     },
     select: async () => {
-      throw new Error("benchmark invariant violated: headless Smart Approve requested UI.select");
+      throw new Error("benchmark invariant violated: headless Smart Approve Lancet requested UI.select");
     },
   };
 
@@ -163,16 +163,16 @@ function makeContext() {
 }
 
 async function loadSmartApprove() {
-  const mod = await import("smart-approve");
+  const mod = await import("smart-approve-lancet/dist/index.js");
   const factory = mod.default ?? mod;
   if (typeof factory !== "function") {
-    throw new TypeError("smart-approve default export is not an extension factory");
+    throw new TypeError("smart-approve-lancet default export is not an extension factory");
   }
   await factory(api);
   const bash = tools.get("bash");
   if (!bash || typeof bash.execute !== "function") {
     throw new Error(
-      `smart-approve did not register a bash tool; registered tools: ${[...tools.keys()].join(", ")}`,
+      `smart-approve-lancet did not register a bash tool; registered tools: ${[...tools.keys()].join(", ")}`,
     );
   }
   return bash;
@@ -182,20 +182,20 @@ let bashTool;
 try {
   bashTool = await loadSmartApprove();
 } catch (error) {
-  process.stderr.write(`Failed to load smart-approve: ${error?.stack ?? error}\n`);
+  process.stderr.write(`Failed to load smart-approve-lancet: ${error?.stack ?? error}\n`);
   process.exit(1);
 }
 
 let packageVersion = "unknown";
 try {
-  const pkg = await import("smart-approve/package.json", { with: { type: "json" } });
+  const pkg = await import("smart-approve-lancet/package.json", { with: { type: "json" } });
   packageVersion = pkg.default?.version ?? pkg.version ?? "unknown";
 } catch {
   // package.json may not be exported by the package; version is informational only.
 }
 
 process.stdout.write(
-  `${JSON.stringify({ type: "ready", package: "smart-approve", version: packageVersion })}\n`,
+  `${JSON.stringify({ type: "ready", package: "smart-approve-lancet", version: packageVersion })}\n`,
 );
 
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });

@@ -351,7 +351,7 @@ test("bash: LANCET review LLM block wins over delegation in auto mode", async ()
   assert.deepEqual(r.details, {
     blocked: true,
     reason: "lancet-llm-block",
-    source: "smart-approve-llm",
+    source: "smart-approve-lancet-llm",
   });
   assert.equal(h.calls.analyze, 1);
   assert.equal(h.calls.delegate, 0);

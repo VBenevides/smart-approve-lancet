@@ -1,4 +1,4 @@
-# Smart Approve + LANCET realistic OMP benchmark
+# Smart Approve Lancet realistic OMP benchmark
 
 This benchmark scores **proposed OMP tool calls**, not arbitrary security-scenario text.
 Nothing is executed.
@@ -9,13 +9,13 @@ The benchmark intentionally mirrors the intended production split:
 
 | Mode | `bash` | `eval` | `hub start` | `write/edit` |
 |---|---|---|---|---|
-| `smart-approve` | Smart Approve | Smart Approve | Smart Approve | Smart Approve |
-| `smart-approve-lancet` | Smart Approve hard rules → LANCET → Smart Approve review | Smart Approve | Smart Approve | Smart Approve |
+| `smart-approve` | Smart Approve Lancet (scoring off) | Smart Approve Lancet | Smart Approve Lancet | Smart Approve Lancet |
+| `smart-approve-lancet` | Smart Approve Lancet hard rules → LANCET → Smart Approve Lancet review | Smart Approve Lancet | Smart Approve Lancet | Smart Approve Lancet |
 | `lancet-only` | LANCET | N/A | N/A | N/A |
 
 `lancet-only` deliberately does **not** receive Python code, hub JSON, file-write JSON, or agent-scenario prose. LANCET Nano is treated as a shell-command classifier.
 
-The combined mode assumes your existing `smart_approve_bridge.mjs` implements your current Smart Approve + LANCET fork. Keep the bridge you already use for the shell benchmark; do not replace it with `smart_approve_bridge.reference.mjs` unless you only want upstream Smart Approve.
+The combined mode uses `smart_approve_bridge.mjs` with the current Smart Approve Lancet package. The reference bridge exercises only the native approval pipeline; it does not implement the `lancet-only` command path. Benchmark mode identifiers remain unchanged: `smart-approve` disables local scoring, while `smart-approve-lancet` enables it. They are distinct modes, not old and new package names.
 
 ## Datasets
 
@@ -59,7 +59,7 @@ Use the same environment as your current benchmark. The Python side needs:
 pip install -r requirements.txt
 ```
 
-The Bun side needs `smart-approve` and `zod` available in `node_modules`. Use your Smart Approve fork for the combined mode.
+The Bun side needs `smart-approve-lancet` and `zod` available in `node_modules`. From this directory, run `bun install` to install the parent checkout dependency. LANCET-only checks use the renamed parent command `/smart-approve-lancet lancet check`; the old `/smart-approve` slash command is removed. Existing config, allow-list, log, and model storage paths and benchmark directory names remain unchanged.
 
 ## Smoke test
 
@@ -140,6 +140,6 @@ Dataset payloads are inert strings. The benchmark does not execute shell command
 
 - the Bash bridge must stub `ctx.invokeTool`
 - the non-Bash bridge in this package stubs eval delegation
-- `hub`, `write`, and `edit` are passed only to Smart Approve's `tool_call` handlers
+- `hub`, `write`, and `edit` are passed only to Smart Approve Lancet's `tool_call` handlers
 
 Do not modify the bridges to delegate to real OMP tools while running hostile corpora.
