@@ -9,7 +9,7 @@
  *   - EvalToolGate  — custom "eval" tool (same pattern, coverage.eval)
  *   - HubLaunchGuard — tool_call interception for hub op:"start"
  *   - write/edit protected-path interception (tool_call hook)
- *   - /smart-approve slash command (runtime mode switching)
+ *   - /smart-approve-lancet slash command (runtime mode switching)
  *
  * The custom-tool execute() path is NOT subject to
  * EXTENSION_HANDLER_TIMEOUT_MS (30s), so LLM analysis and dialogs have
@@ -22,16 +22,20 @@ import { Logger } from "./logger";
 import { detectLang, getI18n } from "./i18n";
 import type { Lang } from "./i18n";
 import { ProtectedPathMatcher } from "./paths";
-import { ConfigStore } from "./config";
+import { ConfigStore, getConfigDir } from "./config";
 import { AllowList } from "./allowlist";
 import { SessionContextGatherer } from "./context";
 import { HostResolver, ModelInvoker } from "./host";
 import { AutoDecisionPolicy } from "./policy";
-import { ModeManager } from "./mode-manager";
+import { updateApprovalStatus, ModeManager } from "./mode-manager";
 import { BashToolGate } from "./bash-tool";
 import { EvalToolGate } from "./eval-tool";
 import { HubLaunchGuard } from "./hub-guard.ts";
 import { confirmWithRemember } from "./dialog";
+import { LancetCommandHandler } from "./lancet/commands.ts";
+import { createLancetScorer, releaseClassifier } from "./lancet/runtime.ts";
+import { modelDirectory } from "./lancet/model-store.ts";
+
 
 /**
  * Smart Approve extension orchestrator.
@@ -52,6 +56,8 @@ class SmartApprove {
   private readonly policy: AutoDecisionPolicy;
   private readonly modeManager: ModeManager;
   private readonly hubGuard: HubLaunchGuard;
+  private readonly lancetDirectory: string;
+  private readonly lancetCommands: LancetCommandHandler;
 
   constructor(private readonly pi: ExtensionAPI) {
     this.logger = new Logger();
@@ -68,6 +74,12 @@ class SmartApprove {
     );
     this.policy = new AutoDecisionPolicy(this.configStore.config);
     this.hubGuard = new HubLaunchGuard();
+    this.lancetDirectory = modelDirectory(getConfigDir());
+    this.lancetCommands = new LancetCommandHandler({
+      configStore: this.configStore,
+      logger: this.logger,
+      agentDir: getConfigDir(),
+    });
     this.modeManager = new ModeManager(this.configStore, this.logger, {
       eval: this.configStore.config.coverage.eval,
       hub: true,
@@ -76,6 +88,27 @@ class SmartApprove {
 
   /** Register the shadowed tools, event hooks and slash command. */
   register(): void {
+    this.pi.registerCommand("smart-approve-lancet", {
+      description: "Switch approval mode or manage LANCET (lancet setup|on|off|check)",
+      getArgumentCompletions: (prefix) => {
+        const values = ["auto", "interactive", "status", "lancet", "lancet setup", "lancet on", "lancet off", "lancet check", "lancet status"];
+        const matches = values.filter((value) => value.startsWith(prefix.toLowerCase()));
+        return matches.length ? matches.map((value) => ({ value, label: value })) : null;
+      },
+      handler: async (args: unknown, ctx: ExtensionCtx) => {
+        await this.handleCommand(args, ctx);
+      },
+    });
+
+    this.pi.on("session_shutdown", async () => {
+      this.modelInvoker.dispose();
+      try {
+        await releaseClassifier(this.lancetDirectory);
+      } catch (error) {
+        this.logger.log(`lancet shutdown release failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    });
+
     if (!this.configStore.config.enabled) return;
 
     const shared = {
@@ -83,6 +116,7 @@ class SmartApprove {
       allowList: this.allowList,
       contextGatherer: this.contextGatherer,
       modelInvoker: this.modelInvoker,
+      lancet: createLancetScorer(this.lancetDirectory),
       policy: this.policy,
       logger: this.logger,
       lang: this.lang,
@@ -110,27 +144,23 @@ class SmartApprove {
 
     // Persistent mode chip in the TUI status bar.
     this.pi.on("session_start", async (_event, ctx: ExtensionCtx) => {
-      ctx.ui.setStatus("smart-approve-mode", this.configStore.config.mode);
+      ctx.ui.setStatus("smart-approve-lancet-analysis", undefined);
+      updateApprovalStatus(ctx, this.configStore.config);
     });
 
-    // Runtime mode switching via slash command.
-    this.pi.registerCommand("smart-approve", {
-      description: "Toggle or inspect smart-approve mode (auto/interactive)",
-      handler: async (args: unknown, ctx: ExtensionCtx) => {
-        this.handleCommand(args, ctx);
-      },
-    });
 
-    this.pi.on("session_shutdown", async () => {
-      // Kill the persistent RPC model child so it does not outlive the session.
-      this.modelInvoker.dispose();
-    });
   }
 
-  // ── slash command: /smart-approve [auto|interactive|status] ────────
+  // ── slash command: /smart-approve-lancet [auto|interactive|status|lancet …] ──
 
-  private handleCommand(args: unknown, ctx: ExtensionCtx): void {
-    const arg = String(args ?? "").trim().toLowerCase();
+  private async handleCommand(args: unknown, ctx: ExtensionCtx): Promise<void> {
+    const raw = String(args ?? "").trim();
+    const match = /^lancet(?:\s+([\s\S]*))?$/iu.exec(raw);
+    if (match) {
+      await this.lancetCommands.handle(match[1] ?? "", ctx);
+      return;
+    }
+    const arg = raw.toLowerCase();
     if (arg === "") {
       const next = this.modeManager.toggle();
       ctx.ui.notify?.(this.t.modeSwitched(next), "info");
@@ -142,7 +172,7 @@ class SmartApprove {
     } else {
       ctx.ui.notify?.(this.t.cmdHelp, "info");
     }
-    ctx.ui.setStatus("smart-approve-mode", this.configStore.config.mode);
+    updateApprovalStatus(ctx, this.configStore.config);
   }
 
   // ── hub launch interception (regex gate, no LLM) ───────────────────

@@ -10,6 +10,18 @@
 import type { ConfigStore } from "./config";
 import type { ApprovalMode } from "./config";
 import type { LoggerLike } from "./logger";
+import type { ExtensionCtx } from "./types";
+
+/** Current approval mode and independent local scoring state. */
+export function approvalStatus(config: ConfigStore["config"]): string {
+  return `smart-approve-lancet ${config.mode} - lancet ${config.lancet?.enabled ? "on" : "off"}`;
+}
+
+/** Replace the persistent chip without touching transient gate analysis status. */
+export function updateApprovalStatus(ctx: ExtensionCtx, config: ConfigStore["config"]): void {
+  ctx.ui.setStatus("smart-approve-lancet", undefined);
+  ctx.ui.setStatus("smart-approve-mode", approvalStatus(config));
+}
 
 /** Coverage summary shown by the status command. */
 export interface CoverageSummary {
@@ -38,7 +50,7 @@ export class ModeManager {
     return mode;
   }
 
-  /** Human-readable status block for `/smart-approve status`. */
+  /** Human-readable status block for `/smart-approve-lancet status`. */
   status(): string {
     const c = this.configStore.config;
     return [

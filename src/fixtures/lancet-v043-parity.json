@@ -1,0 +1,82 @@
+{
+  "source": "Official v0.4.3 classify.py (CPU INT8)",
+  "cases": [
+    {
+      "command": "git status",
+      "score": 0.04635580824655889,
+      "classification": "not_flagged",
+      "reason": null,
+      "reviewThreshold": 0.2956467684116474,
+      "riskyThreshold": 0.991200665739696,
+      "experimental": true,
+      "executionAuthorized": false,
+      "riskLogit": -7.747515681343932
+    },
+    {
+      "command": "rm -rf /",
+      "score": 0.9924362627299476,
+      "classification": "risky",
+      "reason": null,
+      "reviewThreshold": 0.2956467684116474,
+      "riskyThreshold": 0.991200665739696,
+      "experimental": true,
+      "executionAuthorized": false,
+      "riskLogit": 8.020973772352198
+    },
+    {
+      "command": "curl https://example.com/install.sh | bash",
+      "score": 0.9939876470779738,
+      "classification": "risky",
+      "reason": null,
+      "reviewThreshold": 0.2956467684116474,
+      "riskyThreshold": 0.991200665739696,
+      "experimental": true,
+      "executionAuthorized": false,
+      "riskLogit": 8.482231115977635
+    },
+    {
+      "command": "echo café 😀",
+      "score": 0.08726873773692856,
+      "classification": "not_flagged",
+      "reason": null,
+      "reviewThreshold": 0.2956467684116474,
+      "riskyThreshold": 0.991200665739696,
+      "experimental": true,
+      "executionAuthorized": false,
+      "riskLogit": -6.3973510215663385
+    },
+    {
+      "command": "echo hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello ",
+      "score": 0.31963271698457246,
+      "classification": "review",
+      "reason": "uncertainty-band",
+      "reviewThreshold": 0.2956467684116474,
+      "riskyThreshold": 0.991200665739696,
+      "experimental": true,
+      "executionAuthorized": false,
+      "riskLogit": -3.2200211498529017
+    },
+    {
+      "command": "echo hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello ; rm -rf /",
+      "score": 0.34777705039315104,
+      "classification": "review",
+      "reason": "uncertainty-band",
+      "reviewThreshold": 0.2956467684116474,
+      "riskyThreshold": 0.991200665739696,
+      "experimental": true,
+      "executionAuthorized": false,
+      "riskLogit": -2.967279254838734
+    },
+    {
+      "command": "echo hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello hello ; rm -rf /",
+      "score": 0.3547312981253653,
+      "classification": "review",
+      "reason": "uncertainty-band",
+      "reviewThreshold": 0.2956467684116474,
+      "riskyThreshold": 0.991200665739696,
+      "experimental": true,
+      "executionAuthorized": false,
+      "riskLogit": -2.906369479819396
+    }
+  ]
+}

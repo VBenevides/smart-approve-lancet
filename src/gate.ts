@@ -3,9 +3,9 @@
  *
  * ToolGate owns the decision pipeline that was previously bash-only:
  *
- *   hard-block -> allowlist -> no-behavior -> headless check
- *   -> LLM analysis -> verdict (auto policy or interactive dialog)
- *   -> remember -> delegate
+ *   hard-block -> LANCET (Bash, when enabled) -> allowlist -> no-behavior
+ *   -> headless check -> LLM analysis -> verdict (auto policy or interactive
+ *   dialog) -> remember -> delegate
  *
  * Concrete gates (bash, eval) supply the three tool-specific hooks:
  * analyze() / buildKey() / delegate(), plus the schema and subject
@@ -52,6 +52,19 @@ export interface ModelInvokerLike {
   ): Promise<RiskAnalysis | null>;
 }
 
+export type LancetClassification = "risky" | "not_flagged" | "review";
+
+export interface LancetVerdict {
+  classification: LancetClassification;
+  score: number | null;
+  reason: string | null;
+}
+
+/** Narrow local-model contract; the gate owns policy, the scorer owns inference. */
+export interface LancetGuardLike {
+  score(command: string, shell: "bash", signal?: AbortSignal): Promise<LancetVerdict>;
+}
+
 
 /** Shared collaborators injected into every gate instance. */
 export interface GateDeps {
@@ -59,6 +72,8 @@ export interface GateDeps {
   allowList: AllowListLike;
   contextGatherer: ContextGathererLike;
   modelInvoker: ModelInvokerLike;
+  /** Optional local LANCET scorer; only BashToolGate opts into it. */
+  lancet?: LancetGuardLike;
   policy: AutoDecisionPolicy;
   logger: LoggerLike;
   lang: Lang;
@@ -68,6 +83,14 @@ export interface GateDeps {
 /** Tool update callback, matching ToolDefinition.execute's onUpdate. */
 export type ToolUpdateCallback =
   ((update: { content: unknown[]; details?: unknown }) => void) | undefined;
+
+function scoreText(score: unknown): string {
+  return typeof score === "number" && Number.isFinite(score) ? score.toFixed(4) : "n/a";
+}
+
+function logText(value: unknown): string {
+  return String(value).replace(/\s+/gu, " ").slice(0, 160);
+}
 
 export abstract class ToolGate {
   // Public so concrete gates can be constructed by the orchestrator and
@@ -118,6 +141,9 @@ export abstract class ToolGate {
     return this.delegate(params, signal, onUpdate, ctx);
   }
 
+  /** Whether this gate may consult the optional local LANCET scorer. */
+  protected usesLancet(): boolean { return false; }
+
   // ── Registration ───────────────────────────────────────────────────
 
   /** Register this gate as a custom tool shadowing the native built-in. */
@@ -142,7 +168,7 @@ export abstract class ToolGate {
     onUpdate: ToolUpdateCallback,
     ctx: ExtensionCtx,
   ): Promise<AgentToolResult> {
-    const { config, allowList, contextGatherer, modelInvoker, policy, logger, lang, t } = this.deps;
+    const { config, allowList, contextGatherer, modelInvoker, lancet, policy, logger, lang, t } = this.deps;
 
     const subject = this.extractSubject(params);
     if (!subject.trim()) {
@@ -161,22 +187,102 @@ export abstract class ToolGate {
     // 1. Hard-block wins over the allowlist (entries can predate a rule
     //    upgrade or be hand-edited into the allow file).
     if (analysis.hardBlocked) {
-      logger.log(`${this.toolName}: hard-blocked (${label})`);
+      logger.log(`${this.toolName}: source=rules hard-blocked (${label})`);
       return this.textError(`Blocked: ${label}\n${subjectLabel}: ${subject}`, { blocked: true, reason: label });
     }
 
-    // 2. Allowlist hit → delegate directly.
-    if (config.rememberDecisions && allowList.isAllowed(this.toolName, this.buildKey(subject), effectiveCwd)) {
-      logger.log(`${this.toolName}: allowlist hit, delegating to native`);
+    // 2. LANCET is a universal second opinion after hard blocks. A
+    //    missing/invalid result fails closed; it never falls through to the
+    //    existing review path as if the model had not run.
+    let lancetReview = false;
+    const lancetEnabled = config.lancet?.enabled === true;
+    if (this.usesLancet() && lancetEnabled) {
+      if (!lancet) {
+        logger.log(`${this.toolName}: source=unavailable error=LANCET scorer not configured`);
+        return this.textError(
+          `Blocked: LANCET unavailable (scorer not configured)\n${subjectLabel}: ${subject}`,
+          { blocked: true, reason: "lancet-unavailable", source: "unavailable" },
+        );
+      }
+      const inferenceStartedAt = performance.now();
+      let verdict: LancetVerdict;
+      try {
+        verdict = await lancet.score(subject, "bash", signal);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        logger.log(
+          `${this.toolName}: source=unavailable latencyMs=${(performance.now() - inferenceStartedAt).toFixed(1)} error=${logText(message)}`,
+        );
+        return this.textError(
+          `Blocked: LANCET unavailable (${message})\n${subjectLabel}: ${subject}`,
+          { blocked: true, reason: "lancet-unavailable", source: "unavailable" },
+        );
+      }
+
+      const latencyMs = (performance.now() - inferenceStartedAt).toFixed(1);
+      const score = scoreText(verdict?.score);
+      const reason = typeof verdict?.reason === "string" && verdict.reason
+        ? logText(verdict.reason)
+        : "none";
+      if (
+        !verdict ||
+        (verdict.classification !== "not_flagged" &&
+          verdict.classification !== "review" &&
+          verdict.classification !== "risky") ||
+        typeof verdict.score !== "number" ||
+        !Number.isFinite(verdict.score)
+      ) {
+        logger.log(
+          `${this.toolName}: source=unavailable classification=invalid score=${score} reason=${reason} latencyMs=${latencyMs}`,
+        );
+        return this.textError(
+          `Blocked: LANCET returned an invalid verdict\n${subjectLabel}: ${subject}`,
+          { blocked: true, reason: "lancet-invalid", source: "unavailable" },
+        );
+      }
+
+      logger.log(
+        `${this.toolName}: source=lancet classification=${verdict.classification} score=${score} reason=${reason} latencyMs=${latencyMs}`,
+      );
+      if (verdict.classification === "risky") {
+        return this.textError(
+          `Blocked: LANCET flagged the command as risky (score=${score})\n${subjectLabel}: ${subject}`,
+          {
+            blocked: true,
+            reason: "lancet-risky",
+            source: "lancet",
+            score: verdict.score,
+          },
+        );
+      }
+
+      if (verdict.classification === "review") {
+        lancetReview = true;
+        this.safeNotify(
+          ctx,
+          `[Smart Approve Lancet] Review handoff: Smart Approve Lancet approval required (score=${score}${verdict.reason ? `, reason=${logText(verdict.reason)}` : ""}).`,
+          "info",
+        );
+      }
+    }
+
+    // 3. Allowlist hit → delegate directly, unless LANCET requires review.
+    if (
+      !lancetReview &&
+      config.rememberDecisions &&
+      allowList.isAllowed(this.toolName, this.buildKey(subject), effectiveCwd)
+    ) {
+      logger.log(`${this.toolName}: source=allowlist, delegating to native`);
       return this.delegate(params, signal, onUpdate, ctx);
     }
 
-    // 3. No dangerous behavior → delegate directly (zero interruption).
-    if (analysis.behaviors.length === 0) {
+    // 4. No dangerous behavior → delegate directly (zero interruption),
+    //    unless LANCET requires review.
+    if (!lancetReview && analysis.behaviors.length === 0) {
       return this.delegate(params, signal, onUpdate, ctx);
     }
 
-    // 4. Dangerous but reviewable.  Headless contexts block unless auto
+    // 5. Dangerous but reviewable. Headless contexts block unless auto
     //    mode is configured to decide by AI.
     const autoMode = config.mode === "auto";
     if (!hasUI && !(autoMode && config.autoInHeadless)) {
@@ -184,12 +290,12 @@ export abstract class ToolGate {
       return this.textError(`${t.blockedNoUI(label)}\n${subjectLabel}: ${subject}`, { blocked: true, reason: "no-ui" });
     }
 
-    // 5. LLM risk analysis (optional; inside execute(), free of the 30s
+    // 6. LLM risk analysis (optional; inside execute(), free of the 30s
     //    EXTENSION_HANDLER_TIMEOUT_MS handler budget).
     let aiResult: RiskAnalysis | null = null;
     let analysisText: string | null = null;
     if (config.llmAnalysis) {
-      ctx.ui.setStatus("smart-approve", t.analyzing);
+      this.safeStatus(ctx, "smart-approve-lancet-analysis", t.analyzing);
       try {
         const sessionCtx = contextGatherer.gather(ctx, config.contextMaxChars);
         const contextSection = contextGatherer.format(sessionCtx, t);
@@ -203,25 +309,48 @@ export abstract class ToolGate {
       } catch (e) {
         logger.log(`${this.toolName}: LLM analysis failed: ${e instanceof Error ? e.message : String(e)}`);
       } finally {
-        ctx.ui.setStatus("smart-approve", undefined);
+        this.safeStatus(ctx, "smart-approve-lancet-analysis", undefined);
       }
     }
 
-    // 5b. Interrupted while analyzing → abort, no decision.
+    // 6a. Interrupted while analyzing → abort, no decision.
     if (signal?.aborted) {
       logger.log(`${this.toolName}: aborted during analysis`);
       return { content: [{ type: "text", text: "(aborted)" }], details: { aborted: true } };
     }
 
-    // 6. Verdict: auto mode → policy; interactive → dialog.
-    if (autoMode) {
+    // 7. LANCET review resolves the LLM result to allow/block/ask. A failed
+    //    or uncertain review falls back to a user confirmation when UI exists.
+    if (lancetReview) {
+      const reviewVerdict = policy.decideReview(aiResult);
+      logger.log(`${this.toolName}: LANCET review verdict=${reviewVerdict ?? "unavailable"} (${label})`);
+      if (reviewVerdict === "allow") {
+        return this.delegate(params, signal, onUpdate, ctx);
+      }
+      if (reviewVerdict === "block") {
+        if (autoMode) {
+          return this.textError(
+            `Blocked: Smart Approve Lancet LLM denied the command\n${subjectLabel}: ${subject}`,
+            { blocked: true, reason: "lancet-llm-block", source: "smart-approve-lancet-llm" },
+          );
+        }
+        logger.log(`${this.toolName}: interactive approval required after LLM denial (${label})`);
+      }
+      if (!hasUI) {
+        logger.log(`${this.toolName}: blocked (LANCET review uncertain without UI) — ${label}`);
+        return this.textError(
+          `${t.blockedNoUI(label)}\n${subjectLabel}: ${subject}`,
+          { blocked: true, reason: "lancet-llm-uncertain", source: "unavailable" },
+        );
+      }
+    } else if (autoMode) {
       const decision = policy.decide(aiResult, analysis.denyTier);
       logger.log(`${this.toolName}: auto decision=${decision.verdict} reason=${decision.reason} (${label})`);
       if (decision.verdict === "allow") {
-        ctx.ui.notify?.(t.autoAllowed(label), "info");
+        this.safeNotify(ctx, t.autoAllowed(label), "info");
         return this.delegate(params, signal, onUpdate, ctx);
       }
-      ctx.ui.notify?.(t.autoBlocked(label), "warning");
+      this.safeNotify(ctx, t.autoBlocked(label), "warning");
       return this.textError(`${t.autoBlocked(label)}\n${subjectLabel}: ${subject}`, { blocked: true, reason: "auto" });
     }
 
@@ -242,15 +371,31 @@ export abstract class ToolGate {
       allowList.rememberPermanent(this.toolName, this.buildKey(subject), effectiveCwd);
     }
 
-    // 6b. Interrupted after approval → do not execute.
+    // 7a. Interrupted after approval → do not execute.
     if (signal?.aborted) {
       logger.log(`${this.toolName}: aborted after approval, not executing`);
       return { content: [{ type: "text", text: "(aborted)" }], details: { aborted: true } };
     }
 
-    // 7. Execute — delegate to the native tool.
+    // 8. Execute — delegate to the native tool.
     logger.log(`${this.toolName}: approved, delegating to native`);
     return this.delegate(params, signal, onUpdate, ctx);
+  }
+
+  private safeStatus(ctx: ExtensionCtx, id: string, text: string | undefined): void {
+    try {
+      ctx.ui.setStatus(id, text);
+    } catch (error) {
+      this.deps.logger.log(`${this.toolName}: UI status failed — ${logText(error instanceof Error ? error.message : error)}`);
+    }
+  }
+
+  private safeNotify(ctx: ExtensionCtx, message: string, level: "info" | "warning"): void {
+    try {
+      ctx.ui.notify?.(message, level);
+    } catch (error) {
+      this.deps.logger.log(`${this.toolName}: UI notification failed — ${logText(error instanceof Error ? error.message : error)}`);
+    }
   }
 
   private textError(text: string, details: Record<string, unknown>): AgentToolResult {

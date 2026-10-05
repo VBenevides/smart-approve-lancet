@@ -23,6 +23,7 @@ export interface ExtensionAPI {
     name: string,
     def: {
       description: string;
+      getArgumentCompletions?: (prefix: string) => Array<{ value: string; label: string }> | null;
       handler: (args: unknown, ctx: ExtensionCtx) => void | Promise<void>;
     },
   ): void;

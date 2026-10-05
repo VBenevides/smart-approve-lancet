@@ -59,6 +59,15 @@ test("recommend values are normalized (yes/no variants)", () => {
   assert.equal(p.decide({ recommend: "NO" }, false).verdict, "block");
 });
 
+test("LANCET review resolves allow, block, and ask", () => {
+  const policy = new AutoDecisionPolicy(makeConfig());
+  assert.equal(policy.decideReview({ risk: "low", recommend: "allow" }), "allow");
+  assert.equal(policy.decideReview({ risk: "high", recommend: "allow" }), "block");
+  assert.equal(policy.decideReview({ risk: "medium" }), "ask");
+  assert.equal(policy.decideReview({ recommend: "deny" }), "block");
+  assert.equal(policy.decideReview(null), null);
+});
+
 test("no analysis: fallback regex allows without deny tier", () => {
   const p = new AutoDecisionPolicy(makeConfig());
   const d = p.decide(null, false);
