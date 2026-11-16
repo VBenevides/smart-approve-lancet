@@ -13,6 +13,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { HOST_DIRS, getConfigDir } from "./config";
 import { RotatingLog } from "./utils/rotating-log.js";
 
 /** Minimal logger contract for dependency injection (tests, stubs). */
@@ -43,13 +44,12 @@ export class Logger implements LoggerLike {
 
   private defaultLogDir(): string {
     const home = os.homedir();
-    const ompLogs = path.join(home, ".omp", "logs");
-    const piLogs = path.join(home, ".pi", "logs");
-    if (fs.existsSync(ompLogs)) return ompLogs;
-    if (fs.existsSync(piLogs)) return piLogs;
-    // Fall back to .omp/agent (config dir) if logs dir doesn't exist yet
-    const ompAgent = path.join(home, ".omp", "agent");
-    return ompAgent;
+    for (const host of HOST_DIRS) {
+      const logs = path.join(home, host, "logs");
+      if (fs.existsSync(logs)) return logs;
+    }
+    // Fall back to the config dir if no logs dir exists yet
+    return getConfigDir();
   }
 
   /** Write a line.  Never throws — diagnostics are best-effort. */

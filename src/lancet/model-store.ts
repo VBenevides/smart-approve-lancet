@@ -31,14 +31,78 @@ export interface ModelResponse {
 
 export type ModelFetch = (input: string, init: RequestInit) => Promise<ModelResponse>;
 
-export function agentDirectory(env: NodeJS.ProcessEnv = process.env): string {
-  return path.resolve(
-    env.OMP_AGENT_DIR || env.PI_CODING_AGENT_DIR || path.join(os.homedir(), ".pi", "agent"),
-  );
+/**
+ * Host-neutral data root shared by every host (omp, pi, pig).
+ * Linux: $XDG_DATA_HOME or ~/.local/share. macOS: ~/Library/Application Support.
+ * Windows: %LOCALAPPDATA%. The model lives in <root>/<MODEL_ID>.
+ */
+export function dataRoot(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  home = os.homedir(),
+): string {
+  const name = "smart-approve-lancet";
+  if (platform === "win32") {
+    return path.join(env.LOCALAPPDATA || path.join(home, "AppData", "Local"), name);
+  }
+  if (platform === "darwin") return path.join(home, "Library", "Application Support", name);
+  const xdg = env.XDG_DATA_HOME;
+  return path.join(xdg && path.isAbsolute(xdg) ? xdg : path.join(home, ".local", "share"), name);
 }
 
-export function modelDirectory(agentDir = agentDirectory()): string {
+export function modelDirectory(root = dataRoot()): string {
+  return path.join(root, MODEL_ID);
+}
+
+/** Model directory used before the host-neutral root existed. */
+export function legacyModelDirectory(agentDir: string): string {
   return path.join(agentDir, "smart-approve-lancet", MODEL_ID);
+}
+
+function removeLegacy(legacyDirectory: string, log: (message: string) => void): void {
+  try {
+    if (!fs.lstatSync(legacyDirectory).isDirectory()) return;
+    fs.rmSync(legacyDirectory, { recursive: true, force: true });
+    log(`lancet legacy model removed: ${legacyDirectory}`);
+  } catch (error) {
+    log(`lancet legacy model removal failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Move a verified legacy model into the shared root. The legacy copy is removed
+ * only after the new copy is in place and verified. Returns true when it moved the model.
+ */
+export function migrateLegacyModel(
+  legacyDirectory: string,
+  root: string,
+  log: (message: string) => void = () => {},
+): boolean {
+  const target = modelDirectory(root);
+  if (path.resolve(legacyDirectory) === path.resolve(target)) return false;
+  if (modelVerified(target) || !modelVerified(legacyDirectory)) return false;
+  let staging: string | undefined;
+  try {
+    fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+    if (fs.lstatSync(root).isSymbolicLink()) throw new Error("the model root is a symbolic link");
+    staging = fs.mkdtempSync(path.join(root, `.${MODEL_ID}-migrate-`));
+    const copy = path.join(staging, "model");
+    fs.mkdirSync(copy, { mode: 0o700 });
+    for (const name of Object.keys(MODEL_FILES)) {
+      fs.copyFileSync(path.join(legacyDirectory, name), path.join(copy, name));
+    }
+    if (!modelVerified(copy)) throw new Error("the copied model failed verification");
+    fs.rmSync(target, { recursive: true, force: true });
+    fs.renameSync(copy, target);
+    log(`lancet model migrated: ${legacyDirectory} -> ${target}`);
+    removeLegacy(legacyDirectory, log);
+    return true;
+  } catch (error) {
+    log(`lancet model migration failed: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  } finally {
+    if (staging) fs.rmSync(staging, { recursive: true, force: true });
+  }
 }
 
 /** Cheap presence check for status output; loading verifies every digest again. */
@@ -132,7 +196,7 @@ function unpack(archive: string, directory: string): void {
 }
 
 export interface InstallModelOptions {
-  agentDir?: string;
+  root?: string;
   fetchImpl?: ModelFetch;
   signal?: AbortSignal;
   onProgress?: (phase: ModelProgress) => void;
@@ -140,12 +204,12 @@ export interface InstallModelOptions {
 
 /** Download, verify, and atomically install the pinned model. */
 export async function installModel({
-  agentDir = agentDirectory(),
+  root = dataRoot(),
   fetchImpl = fetch as unknown as ModelFetch,
   signal,
   onProgress,
 }: InstallModelOptions = {}): Promise<InstallResult> {
-  const directory = modelDirectory(agentDir);
+  const directory = modelDirectory(root);
   if (modelVerified(directory)) return { installed: false, reason: "already-current", directory };
 
   const parent = path.dirname(directory);

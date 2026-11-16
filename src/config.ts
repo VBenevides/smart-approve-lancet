@@ -117,14 +117,26 @@ function mergeConfig(user: unknown): SmartApproveConfig {
   };
 }
 
-/** Resolve config directory: ~/.omp/agent or ~/.pi/agent. */
-export function getConfigDir(): string {
-  const home = os.homedir();
-  const ompDir = path.join(home, ".omp", "agent");
-  const piDir = path.join(home, ".pi", "agent");
-  if (fs.existsSync(ompDir)) return ompDir;
-  if (fs.existsSync(piDir)) return piDir;
-  return ompDir;
+/** Host home directories under `~`, in priority order (omp, pi, pig). */
+export const HOST_DIRS = [".omp", ".pi", ".pig"] as const;
+
+/** Host environment variables that move the agent directory, in priority order. */
+const AGENT_DIR_ENV = ["OMP_AGENT_DIR", "PI_CODING_AGENT_DIR", "PIG_CODING_AGENT_DIR"] as const;
+
+/**
+ * Resolve config directory. A host environment variable wins. Otherwise use the
+ * first existing `~/<host>/agent` in HOST_DIRS order, and default to ~/.omp/agent.
+ */
+export function getConfigDir(env: NodeJS.ProcessEnv = process.env, home = os.homedir()): string {
+  for (const name of AGENT_DIR_ENV) {
+    const value = env[name];
+    if (value) return path.resolve(value);
+  }
+  for (const host of HOST_DIRS) {
+    const dir = path.join(home, host, "agent");
+    if (fs.existsSync(dir)) return dir;
+  }
+  return path.join(home, HOST_DIRS[0], "agent");
 }
 
 /** Keys that may be changed at runtime (written back to disk on persist). */
@@ -142,6 +154,8 @@ export class ConfigStore {
   readonly config: SmartApproveConfig;
   readonly configPath: string;
   readonly allowListPath: string;
+  /** True when the config file exists but could not be read or parsed. */
+  loadFailed = false;
   private readonly dirty = new Set<keyof SmartApproveConfig>();
 
   constructor(private readonly logger?: LoggerLike, configDir?: string) {
@@ -160,6 +174,7 @@ export class ConfigStore {
         return merged;
       }
     } catch (e) {
+      this.loadFailed = true;
       this.logger?.log(`config load failed, using defaults: ${e instanceof Error ? e.message : String(e)}`);
     }
     return { ...DEFAULT_CONFIG };

@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { getConfigDir } from "../config.ts";
 import { LancetClassifier, type LancetResult, type OrtRuntime } from "./classifier.ts";
 import { modelDirectory, modelState } from "./model-store.ts";
+import { touchLastUsed } from "./retention.ts";
 
 const require = createRequire(import.meta.url);
 const extensionDirectory = dirname(fileURLToPath(import.meta.url));
@@ -132,6 +133,7 @@ export async function scoreCommand(
   signal?: AbortSignal,
   directory = modelDirectory(),
 ): Promise<LancetResult> {
+  touchLastUsed(dirname(directory));
   return (await classifier(directory)).score(command, shell, signal);
 }
 

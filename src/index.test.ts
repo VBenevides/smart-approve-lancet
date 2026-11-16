@@ -62,7 +62,7 @@ test("verified nested lifecycle preserves both approval modes and never executes
         import fs from "node:fs";
         import path from "node:path";
         import smartApprove from "./src/index.ts";
-        import { modelDirectory, modelVerified } from "./src/lancet/model-store.ts";
+        import { legacyModelDirectory, modelVerified } from "./src/lancet/model-store.ts";
         let definition;
         smartApprove({registerCommand: (_name, def) => definition = def, on: () => {}});
         const mode = ${JSON.stringify(mode)};
@@ -73,7 +73,7 @@ test("verified nested lifecycle preserves both approval modes and never executes
           setStatus: (id, text) => statuses[id] = text,
         }};
         const saved = () => JSON.parse(fs.readFileSync(path.join(process.env.HOME, ".omp/agent/smart-approve.json"), "utf8"));
-        assert.equal(modelVerified(modelDirectory(path.join(process.env.HOME, ".omp/agent"))), true, "fixture must be verified before setup");
+        assert.equal(modelVerified(legacyModelDirectory(path.join(process.env.HOME, ".omp/agent"))), true, "fixture must be verified before setup");
         await definition.handler("lancet setup", ctx);
         assert.match(notices.at(-1), /already installed and verified/);
         assert.equal(saved().lancet.enabled, false);
@@ -95,7 +95,7 @@ test("verified nested lifecycle preserves both approval modes and never executes
         console.log(mode + ": setup/on/check/off passed");
       `], {
         cwd: path.resolve(import.meta.dir, ".."),
-        env: { ...process.env, HOME: home },
+        env: { ...process.env, HOME: home, XDG_DATA_HOME: "", OMP_AGENT_DIR: "", PI_CODING_AGENT_DIR: "", PIG_CODING_AGENT_DIR: "" },
         encoding: "utf8",
         timeout: 60_000,
       });

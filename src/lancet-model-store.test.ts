@@ -47,7 +47,7 @@ describe("LANCET model lifecycle", () => {
     const dir = agentDir("wrong");
     await assert.rejects(
       installModel({
-        agentDir: dir,
+        root: dir,
         fetchImpl: async (url) => {
           requested.push(url);
           return response(Buffer.from("not the model"));
@@ -63,21 +63,21 @@ describe("LANCET model lifecycle", () => {
   test("rejects declared-size mismatches, HTTP errors, and off-HTTPS redirects", async () => {
     await assert.rejects(
       installModel({
-        agentDir: agentDir("declared"),
+        root: agentDir("declared"),
         fetchImpl: async () => response(Buffer.from("x"), { length: 12 }),
       }),
       /wrong size/u,
     );
     await assert.rejects(
       installModel({
-        agentDir: agentDir("status"),
+        root: agentDir("status"),
         fetchImpl: async () => response(Buffer.alloc(0), { status: 404 }),
       }),
       /HTTP 404/u,
     );
     await assert.rejects(
       installModel({
-        agentDir: agentDir("redirect"),
+        root: agentDir("redirect"),
         fetchImpl: async () => response(Buffer.from("x"), { url: "http://example.invalid/model" }),
       }),
       /off HTTPS/u,
@@ -90,7 +90,7 @@ describe("LANCET model lifecycle", () => {
     fs.mkdirSync(target, { recursive: true });
     fs.writeFileSync(path.join(target, "model.json"), "{}");
     await assert.rejects(
-      installModel({ agentDir: dir, fetchImpl: async () => response(Buffer.from("x")) }),
+      installModel({ root: dir, fetchImpl: async () => response(Buffer.from("x")) }),
       /checksum/u,
     );
     assert.equal(fs.readFileSync(path.join(target, "model.json"), "utf8"), "{}");
@@ -112,13 +112,13 @@ describe("LANCET model lifecycle", () => {
         body: fs.createReadStream(archive) as AsyncIterable<Uint8Array>,
       });
 
-      const first = await installModel({ agentDir: dir, fetchImpl });
+      const first = await installModel({ root: dir, fetchImpl });
       assert.equal(first.reason, "downloaded");
       assert.equal(modelVerified(target), true);
       assert.deepEqual(leftovers(dir), [path.basename(target)]);
 
       const second = await installModel({
-        agentDir: dir,
+        root: dir,
         fetchImpl: async () => {
           throw new Error("a verified install must not download again");
         },
