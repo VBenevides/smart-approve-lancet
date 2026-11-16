@@ -5,12 +5,16 @@ import type { SmartApproveConfig } from "../config.ts";
 import { updateApprovalStatus } from "../mode-manager.ts";
 import {
   installModel as installPinnedModel,
+  legacyModelDirectory,
+  migrateLegacyModel,
   modelDirectory,
+  modelState,
   modelVerified,
   type InstallModelOptions,
   type InstallResult,
 } from "./model-store.ts";
 import { classifierLoaded, createLancetScorer, releaseClassifier } from "./runtime.ts";
+import { deletionDate, touchLastUsed } from "./retention.ts";
 
 export interface LancetConfigStoreLike {
   readonly config: SmartApproveConfig;
@@ -27,7 +31,10 @@ export type InstallModelFunction = (options: InstallModelOptions) => Promise<Ins
 export interface LancetCommandDeps {
   configStore: LancetConfigStoreLike;
   logger: LoggerLike;
-  agentDir: string;
+  /** Host-neutral model root (see dataRoot). */
+  root: string;
+  /** Host agent directory that may hold a model from an older version. */
+  legacyAgentDir?: string;
   scorer?: LancetScorerLike;
   installModel?: InstallModelFunction;
   classifierLoaded?: () => boolean;
@@ -40,7 +47,7 @@ export class LancetCommandHandler {
   private readonly installModel: InstallModelFunction;
   private readonly isClassifierLoaded: () => boolean;
   constructor(private readonly deps: LancetCommandDeps) {
-    this.directory = modelDirectory(deps.agentDir);
+    this.directory = modelDirectory(deps.root);
     this.scorer = deps.scorer ?? createLancetScorer(this.directory);
     this.installModel = deps.installModel ?? installPinnedModel;
     this.isClassifierLoaded = deps.classifierLoaded ?? classifierLoaded;
@@ -76,10 +83,19 @@ export class LancetCommandHandler {
   status(): string {
     const enabled = this.deps.configStore.config.lancet?.enabled === true;
     if (!enabled) {
-      return [
+      const lines = [
         "Smart Approve Lancet: OFF",
         "Smart Approve Lancet is using its default review flow.",
-      ].join("\n");
+      ];
+      if (modelState(this.directory).installed) {
+        const due = deletionDate(this.deps.root);
+        lines.push(
+          due
+            ? `Model: installed; it is deleted after ${due.toISOString().slice(0, 10)} unless a host uses it.`
+            : "Model: installed; the unused-model timer starts at the next start.",
+        );
+      }
+      return lines.join("\n");
     }
 
     return [
@@ -96,13 +112,15 @@ export class LancetCommandHandler {
   private async setup(ctx: ExtensionCtx): Promise<void> {
     this.deps.logger.log("lancet setup started");
     try {
+      this.migrateLegacy();
       const result = await this.installModel({
-        agentDir: this.deps.agentDir,
+        root: this.deps.root,
         onProgress: (phase) => this.deps.logger.log(`lancet setup: ${phase}`),
       });
       const message = result.reason === "already-current"
         ? "[Smart Approve Lancet] Model is already installed and verified."
         : "[Smart Approve Lancet] Model downloaded, verified, and installed.";
+      touchLastUsed(this.deps.root, Date.now(), (m) => this.deps.logger.log(m));
       this.deps.logger.log(`lancet setup completed: ${result.reason}`);
       this.notify(ctx, message, "info");
     } catch (error) {
@@ -112,7 +130,17 @@ export class LancetCommandHandler {
     }
   }
 
+  private migrateLegacy(): void {
+    if (!this.deps.legacyAgentDir) return;
+    migrateLegacyModel(
+      legacyModelDirectory(this.deps.legacyAgentDir),
+      this.deps.root,
+      (message) => this.deps.logger.log(message),
+    );
+  }
+
   private enable(ctx: ExtensionCtx): void {
+    this.migrateLegacy();
     if (!modelVerified(this.directory)) {
       const message = "[Smart Approve Lancet] Cannot enable: the pinned v0.4.3 model is not verified. Run /smart-approve-lancet lancet setup first.";
       this.deps.logger.log("lancet enable refused: model is not verified");
@@ -120,6 +148,7 @@ export class LancetCommandHandler {
       return;
     }
 
+    touchLastUsed(this.deps.root, Date.now(), (m) => this.deps.logger.log(m));
     this.deps.configStore.update({ lancet: { enabled: true } });
     const persisted = this.deps.configStore.persist();
     this.deps.logger.log(`lancet enabled${persisted ? "" : " (not persisted)"}`);

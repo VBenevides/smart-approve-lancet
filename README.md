@@ -106,14 +106,14 @@ The integration targets the local **LANCET Nano v0.4.3 CPU INT8 model**, identif
 /smart-approve-lancet lancet check <command> # score for inspection; never executes it
 ```
 
-LANCET actions live under `/smart-approve-lancet lancet`. The old `/smart-approve` command is removed, not retained as an alias; `/smart-approve-lancet` is now the parent command, not a standalone LANCET command. Existing config, allow-list, log, and model storage paths remain unchanged, so no stored settings or model migration is required.
+LANCET actions live under `/smart-approve-lancet lancet`. The old `/smart-approve` command is removed, not retained as an alias; `/smart-approve-lancet` is now the parent command, not a standalone LANCET command. Config, allow-list, and log paths are unchanged. The model now lives in a host-neutral data directory shared by omp, pi, and pig (see below). A verified model from the old agent directory is moved there automatically when LANCET is enabled, on `on`, and on `setup`. The old copy is removed only after the new copy is verified.
 
-To verify the full nested lifecycle against an already installed official model, run `LANCET_MODEL_DIRECTORY="$HOME/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.3" bun test --timeout 120000 src/index.test.ts`. The integration test copies the model into isolated temporary homes, checks both approval modes, and verifies that `check` scores without executing its shell payload.
+To verify the full nested lifecycle against an already installed official model, run `LANCET_MODEL_DIRECTORY="$HOME/.local/share/smart-approve-lancet/lancet-nano-v0.4.3" bun test --timeout 120000 src/index.test.ts`. The integration test copies the model into isolated temporary homes, checks both approval modes, and verifies that `check` scores without executing its shell payload.
 
-`setup` downloads the pinned HTTPS GitHub release archive to a private staging directory, verifies the archive and all six required model files, and atomically installs them under the existing agent directory. After upgrading, run `/smart-approve-lancet lancet setup` to install v0.4.3; v0.4.2 files are not reused:
+`setup` downloads the pinned HTTPS GitHub release archive to a private staging directory, verifies the archive and all six required model files, and atomically installs them under the data directory (`$XDG_DATA_HOME/smart-approve-lancet` or `~/.local/share/smart-approve-lancet` on Linux, `~/Library/Application Support/smart-approve-lancet` on macOS, `%LOCALAPPDATA%\smart-approve-lancet` on Windows). After upgrading, run `/smart-approve-lancet lancet setup` to install v0.4.3; v0.4.2 files are not reused:
 
 ```text
-~/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.3/
+~/.local/share/smart-approve-lancet/lancet-nano-v0.4.3/
 ├── encoder-int8.onnx
 ├── head.bin
 ├── head.json
@@ -121,6 +121,8 @@ To verify the full nested lifecycle against an already installed official model,
 ├── merges.txt
 └── model.json
 ```
+
+**Unused model cleanup.** Any host that loads the model, scores a command, or runs `setup` refreshes `<data directory>/last-used` (at most once an hour per process). At startup, a host with LANCET off deletes only `<data directory>/lancet-nano-v0.4.3` when that marker is more than 7 days old, and logs the path and reason. A missing or invalid marker is reset to now and deletes nothing. Nothing is deleted while LANCET is on, when the config cannot be read, or when the path is a symbolic link or resolves outside the data directory. `lancet on` then asks for `lancet setup` to download the model again. `lancet status` shows the deletion date.
 
 The archive is not downloaded during package installation, session startup, `on`, `off`, or inference. Inference loads lazily on the first eligible Bash command, uses the CPU execution provider from the exact `onnxruntime-node` `1.30.0` dependency, and caches one classifier per model directory until `/smart-approve-lancet lancet off` or session end releases it. The release archive is about 100 MB and the ONNX file is about 111 MB; resident memory and score latency depend on the host CPU and ONNX Runtime.
 
@@ -415,7 +417,7 @@ smart-approve-lancet/
 ~/.omp/agent/smart-approve.json                         — config (user-editable; mode toggles persist here)
 ~/.omp/agent/smart-approve-allow.json                   — permanent allow-list (auto-maintained)
 ~/.omp/logs/smart-approve.log                           — diagnostic log
-~/.omp/agent/smart-approve-lancet/lancet-nano-v0.4.2/           — checksum-verified model files after setup
+~/.local/share/smart-approve-lancet/lancet-nano-v0.4.3/         — checksum-verified model files after setup (shared by all hosts)
 
 ```
 ## Acknowledgements

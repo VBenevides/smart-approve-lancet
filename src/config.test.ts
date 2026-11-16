@@ -77,7 +77,7 @@ describe("LANCET lifecycle commands", () => {
       options.onProgress?.("verify");
       return { installed: true, reason: "downloaded", directory: path.join(directory, "model") };
     };
-    const handler = new LancetCommandHandler({ configStore: store, logger, agentDir: directory, installModel });
+    const handler = new LancetCommandHandler({ configStore: store, logger, root: directory, installModel });
     const ctx = context(notices);
 
     await handler.handle("on", ctx);
@@ -98,7 +98,7 @@ describe("LANCET lifecycle commands", () => {
     const handler = new LancetCommandHandler({
       configStore: store,
       logger,
-      agentDir: directory,
+      root: directory,
       scorer: {
         score: async (command) => {
           checked = command;
@@ -134,7 +134,7 @@ describe("LANCET lifecycle commands", () => {
     const handler = new LancetCommandHandler({
       configStore: store,
       logger: { log: (message) => logs.push(message) },
-      agentDir: directory,
+      root: directory,
       installModel: async () => { throw new Error("download refused"); },
     });
     await handler.handle("setup", context(notices));

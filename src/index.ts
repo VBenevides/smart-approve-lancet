@@ -34,7 +34,8 @@ import { HubLaunchGuard } from "./hub-guard.ts";
 import { confirmWithRemember } from "./dialog";
 import { LancetCommandHandler } from "./lancet/commands.ts";
 import { createLancetScorer, releaseClassifier } from "./lancet/runtime.ts";
-import { modelDirectory } from "./lancet/model-store.ts";
+import { dataRoot, legacyModelDirectory, migrateLegacyModel, modelDirectory } from "./lancet/model-store.ts";
+import { cleanupUnusedModel, touchLastUsed } from "./lancet/retention.ts";
 
 
 /**
@@ -74,16 +75,40 @@ class SmartApprove {
     );
     this.policy = new AutoDecisionPolicy(this.configStore.config);
     this.hubGuard = new HubLaunchGuard();
-    this.lancetDirectory = modelDirectory(getConfigDir());
+    const lancetRoot = dataRoot();
+    const agentDir = getConfigDir();
+    this.lancetDirectory = modelDirectory(lancetRoot);
+    this.maintainLancetModel(lancetRoot, agentDir);
     this.lancetCommands = new LancetCommandHandler({
       configStore: this.configStore,
       logger: this.logger,
-      agentDir: getConfigDir(),
+      root: lancetRoot,
+      legacyAgentDir: agentDir,
     });
     this.modeManager = new ModeManager(this.configStore, this.logger, {
       eval: this.configStore.config.coverage.eval,
       hub: true,
     });
+  }
+
+  /**
+   * Startup upkeep for the shared LANCET model. Enabled: migrate an old copy and
+   * mark the model as used. Disabled: delete the model after 7 days without use.
+   * Never throws, so a failure cannot stop the extension.
+   */
+  private maintainLancetModel(root: string, agentDir: string): void {
+    const log = (message: string) => this.logger.log(message);
+    try {
+      const enabled = this.configStore.config.lancet?.enabled === true;
+      if (enabled) {
+        migrateLegacyModel(legacyModelDirectory(agentDir), root, log);
+        touchLastUsed(root, Date.now(), log);
+        return;
+      }
+      cleanupUnusedModel({ root, enabled, configUnreadable: this.configStore.loadFailed, log });
+    } catch (error) {
+      log(`lancet model upkeep failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /** Register the shadowed tools, event hooks and slash command. */
